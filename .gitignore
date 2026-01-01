@@ -1,0 +1,72 @@
+# ========================
+# GERAL & IDEs
+# ========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+.env
+.env.*
+
+# ========================
+# BACKEND (Python / Django)
+# ========================
+# Byte-compiled / Optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / Packaging
+.Python
+backend/build/
+backend/develop-eggs/
+backend/dist/
+backend/downloads/
+backend/eggs/
+backend/.eggs/
+backend/lib/
+backend/lib64/
+backend/parts/
+backend/sdist/
+backend/var/
+backend/wheels/
+backend/*.egg-info/
+backend/.installed.cfg
+backend/*.egg
+backend/MANIFEST
+
+# Virtual Environments (Poetry)
+backend/.venv/
+venv/
+env/
+
+# Database (Nunca suba seu banco local!)
+backend/db.sqlite3
+backend/db.sqlite3-journal
+
+# Django Media (Uploads de usuários não vão pro git)
+backend/media/
+
+# ========================
+# FRONTEND (Node / Next.js)
+# ========================
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+
+# Testing
+frontend/coverage/
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Debug
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
