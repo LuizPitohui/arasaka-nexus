@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # --- Serviço Backend (Django) ---
+  backend:
+    build: ./backend
+    container_name: arasaka-backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app # Sincroniza sua pasta local com o container (Hot Reload)
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+
+  # --- Serviço Frontend (Next.js) ---
+  frontend:
+    build: ./frontend
+    container_name: arasaka-frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Evita que o node_modules do container seja sobrescrito pelo local
+    ports:
+      - "3000:3000"
+    environment:
+      - WATCHPACK_POLLING=true # Ajuda o Windows a detectar mudanças de arquivo
+    depends_on:
+      - backend
+
+# (Futuramente adicionaremos o banco de dados Postgres aqui)
