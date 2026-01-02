@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import EmployeeForm from '@/components/EmployeeForm';
 import EmployeeCard from '@/components/EmployeeCard';
+import DashboardStats from '@/components/DashboardStats'; // <--- Adicione isso
 
 interface Employee {
   id: number;
@@ -14,6 +15,8 @@ interface Employee {
 
 export default function Home() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+
+  
   
   // Estado para saber quem estamos editando (null = ninguém)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -49,6 +52,8 @@ export default function Home() {
             System v1.2 // Full Access
           </p>
         </header>
+
+        <DashboardStats employees={employees} />
 
         {/* Passamos o estado de edição para o formulário */}
         <EmployeeForm 

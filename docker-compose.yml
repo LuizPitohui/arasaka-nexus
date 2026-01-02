@@ -17,18 +17,17 @@ services:
   frontend:
     build: ./frontend
     container_name: arasaka-frontend
-    # Garante que o modo de desenvolvimento (com hot reload) está ativo
-    command: npm run dev 
+    # CORREÇÃO AQUI: Removemos o 'd' extra do final
+    command: npx next dev --webpack
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next  # <--- Importante: Isola a pasta de build para evitar erros de permissão
+      - /app/.next
     ports:
       - "3000:3000"
     environment:
-      # --- O SEGREDO DO HOT RELOAD NO WINDOWS ---
-      - WATCHPACK_POLLING=true      # Força o Webpack a verificar mudanças
-      - CHOKIDAR_USEPOLLING=true    # Força o Next.js a verificar mudanças
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
 
