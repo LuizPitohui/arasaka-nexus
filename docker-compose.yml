@@ -11,19 +11,24 @@ services:
     env_file:
       - .env
     depends_on:
-      - db  # Espera o banco ligar antes de tentar conectar
+      - db
 
   # --- Serviço Frontend (Next.js) ---
   frontend:
     build: ./frontend
     container_name: arasaka-frontend
+    # Garante que o modo de desenvolvimento (com hot reload) está ativo
+    command: npm run dev 
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next  # <--- Importante: Isola a pasta de build para evitar erros de permissão
     ports:
       - "3000:3000"
     environment:
-      - WATCHPACK_POLLING=true
+      # --- O SEGREDO DO HOT RELOAD NO WINDOWS ---
+      - WATCHPACK_POLLING=true      # Força o Webpack a verificar mudanças
+      - CHOKIDAR_USEPOLLING=true    # Força o Next.js a verificar mudanças
     depends_on:
       - backend
 
@@ -32,7 +37,7 @@ services:
     image: postgres:15-alpine
     container_name: arasaka-db
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persistência de dados
+      - postgres_data:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
