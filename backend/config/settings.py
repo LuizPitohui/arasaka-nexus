@@ -121,3 +121,18 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://192.168.100.30:3000",
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    # Isso tranca tudo por padrão? Ainda não, vamos fazer manualmente nas views para testar.
+}
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), # O crachá vale por 1 hora
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}

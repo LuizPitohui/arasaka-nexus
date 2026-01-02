@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import EmployeeForm from '@/components/EmployeeForm';
 import EmployeeCard from '@/components/EmployeeCard';
 import DashboardStats from '@/components/DashboardStats';
-import SearchBar from '@/components/SearchBar'; // <--- Import Novo
-import DepartmentChart from '@/components/DepartmentChart';
+import SearchBar from '@/components/SearchBar';
+import DepartmentChart from '@/components/DepartmentChart'; // <--- Import Restaurado
 
 interface Employee {
   id: number;
@@ -16,80 +17,121 @@ interface Employee {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-  const [searchQuery, setSearchQuery] = useState(''); // <--- Estado da Busca
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Função inteligente: busca todos OU busca filtrado
+  // Pega o Token para autorizar as requisições
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('access_token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
+  };
+
   const fetchEmployees = useCallback(async (query: string = '') => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+
     try {
-      // Se tiver query, adiciona ?search=... na URL
       const url = query 
         ? `http://localhost:8000/api/employees/?search=${query}`
         : 'http://localhost:8000/api/employees/';
         
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.status === 401) {
+        handleLogout(); // Se o token venceu, faz logout
+        return;
+      }
+
       const data = await response.json();
       setEmployees(data);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     }
-  }, []);
+  }, [router]);
 
-  // Carrega inicial
   useEffect(() => {
     fetchEmployees();
   }, [fetchEmployees]);
 
-  // Efeito "Debounce": Espera você parar de digitar para buscar (performance)
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchEmployees(searchQuery);
-    }, 500); // Espera 0.5s após parar de digitar
-
+    }, 500);
     return () => clearTimeout(timer);
   }, [searchQuery, fetchEmployees]);
 
   const handleSuccess = () => {
     setEditingEmployee(null);
-    fetchEmployees(searchQuery); // Mantém a busca atual ao recarregar
+    fetchEmployees(searchQuery);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    router.push('/login');
   };
 
   return (
     <main className="min-h-screen p-8 bg-gray-900 text-gray-100 font-sans">
       <div className="max-w-6xl mx-auto">
-        <header className="mb-8 border-b border-gray-700 pb-4">
-          <h1 className="text-5xl font-extrabold text-white tracking-tighter">
-            ARASAKA <span className="text-red-600">NEXUS</span>
-          </h1>
-          <p className="text-gray-500 text-sm mt-1 tracking-widest uppercase">
-            Personnel Database v2.0 // Search Enabled
-          </p>
+        {/* CABEÇALHO */}
+        <header className="mb-8 border-b border-gray-700 pb-4 flex justify-between items-end">
+          <div>
+            <h1 className="text-5xl font-extrabold text-white tracking-tighter">
+              ARASAKA <span className="text-red-600">NEXUS</span>
+            </h1>
+            <p className="text-gray-500 text-sm mt-1 tracking-widest uppercase">
+              Secure Database // Authorized Personnel Only
+            </p>
+          </div>
+          
+          <button 
+            onClick={handleLogout}
+            className="text-xs text-red-500 border border-red-900 px-4 py-2 hover:bg-red-900/30 transition-colors uppercase tracking-widest"
+          >
+            Terminate Session
+          </button>
         </header>
 
+        {/* ESTATÍSTICAS NO TOPO */}
         <DashboardStats employees={employees} />
 
-        {/* --- GRÁFICO NOVO AQUI --- */}
+        {/* --- ÁREA VISUAL (GRÁFICO + LOGS) RESTAURADA --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* O gráfico ocupa 2/3 da largura em telas grandes */}
+          {/* Gráfico de Departamentos */}
           <div className="lg:col-span-2">
             <DepartmentChart employees={employees} />
           </div>
-
-          {/* Espaço reservado para futuro widget (ex: Logs recentes) */}
-          <div className="border border-dashed border-gray-800 bg-black/30 flex items-center justify-center p-6 text-gray-600 text-sm font-mono uppercase">
+          
+          {/* Card de Logs (Placeholder) */}
+          <div className="border border-dashed border-gray-800 bg-black/30 flex items-center justify-center p-6 text-gray-600 text-sm font-mono uppercase h-[300px]">
             System Logs (Offline)
+            <br />
+            Monitoring disabled
           </div>
         </div>
-        {/* --- BARRA DE BUSCA NOVA --- */}
+
+        {/* BARRA DE BUSCA */}
         <SearchBar onSearch={setSearchQuery} />
         
+        {/* FORMULÁRIO DE CADASTRO/EDIÇÃO */}
         <EmployeeForm 
           onSuccess={handleSuccess} 
           employeeToEdit={editingEmployee}
           onCancel={() => setEditingEmployee(null)}
         />
 
+        {/* TÍTULO DA LISTA */}
         <div className="flex items-center justify-between mb-6 mt-10 border-l-4 border-gray-600 pl-3">
           <h3 className="text-2xl font-bold text-gray-400 uppercase">
             Resultados da Consulta
@@ -99,6 +141,7 @@ export default function Home() {
           </span>
         </div>
         
+        {/* LISTA DE CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {employees.map((employee) => (
             <EmployeeCard 
@@ -114,8 +157,7 @@ export default function Home() {
           
           {employees.length === 0 && (
             <div className="col-span-full text-center py-20 border border-dashed border-gray-800 rounded bg-black/50">
-              <p className="text-gray-500 font-mono text-lg">NO DATA FOUND FOR "{searchQuery}"</p>
-              <p className="text-gray-700 text-sm mt-2">Check syntax or clear filters.</p>
+              <p className="text-gray-500 font-mono text-lg">NO DATA FOUND</p>
             </div>
           )}
         </div>

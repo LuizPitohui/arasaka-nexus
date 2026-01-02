@@ -18,8 +18,17 @@ export default function EmployeeCard({ employee, onUpdate, onEdit }: Props) {
   
   const handleDelete = async () => {
     if (!confirm(`Confirmar desligamento de ${employee.full_name}?`)) return;
+    
+    const token = localStorage.getItem('access_token'); // <--- Pega o token
+    
     try {
-      await fetch(`http://localhost:8000/api/employees/${employee.id}/`, { method: 'DELETE' });
+      await fetch(`http://localhost:8000/api/employees/${employee.id}/`, { 
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}` // <--- Envia o token
+        }
+
+      });
       onUpdate();
     } catch (e) { console.error(e); }
   };

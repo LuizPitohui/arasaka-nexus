@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
-// Precisamos importar ou redefinir a interface aqui também
 interface Employee {
   id: number;
   full_name: string;
@@ -13,8 +13,8 @@ interface Employee {
 
 interface Props {
   onSuccess: () => void;
-  employeeToEdit: Employee | null; // Novo: recebe quem vamos editar
-  onCancel: () => void; // Novo: botão para cancelar edição
+  employeeToEdit: Employee | null;
+  onCancel: () => void;
 }
 
 export default function EmployeeForm({ onSuccess, employeeToEdit, onCancel }: Props) {
@@ -25,7 +25,6 @@ export default function EmployeeForm({ onSuccess, employeeToEdit, onCancel }: Pr
     department: '',
   });
 
-  // Mágica: Quando "employeeToEdit" muda, preenche o formulário
   useEffect(() => {
     if (employeeToEdit) {
       setFormData({
@@ -35,7 +34,6 @@ export default function EmployeeForm({ onSuccess, employeeToEdit, onCancel }: Pr
         department: employeeToEdit.department,
       });
     } else {
-      // Se não tem ninguém para editar, limpa o form
       setFormData({ full_name: '', email: '', role: 'DEV', department: '' });
     }
   }, [employeeToEdit]);
@@ -43,33 +41,52 @@ export default function EmployeeForm({ onSuccess, employeeToEdit, onCancel }: Pr
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Notificação de "Processando..."
+    const loadingToast = toast.loading('Establishing secure connection...');
+
     try {
-      // Decide se é CRIAÇÃO (POST) ou EDIÇÃO (PUT)
       const url = employeeToEdit 
         ? `http://localhost:8000/api/employees/${employeeToEdit.id}/` 
         : 'http://localhost:8000/api/employees/';
       
       const method = employeeToEdit ? 'PUT' : 'POST';
+      const token = localStorage.getItem('access_token');
 
       const response = await fetch(url, {
         method: method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(formData),
       });
 
+      // Remove o loading
+      toast.dismiss(loadingToast);
+
       if (response.ok) {
         setFormData({ full_name: '', email: '', role: 'DEV', department: '' });
-        onSuccess(); // Avisa o pai que deu certo
+        onSuccess();
+        // SUCESSO
+        toast.success(employeeToEdit ? 'Update Complete.' : 'New Asset Registered.', {
+          style: { borderColor: '#16a34a' } // Borda verde
+        });
       } else {
         const errorData = await response.json();
-        alert(`Erro: ${JSON.stringify(errorData)}`);
+        // ERRO DA API
+        toast.error(`Operation Failed: ${JSON.stringify(errorData)}`, {
+          style: { borderColor: '#dc2626' } // Borda vermelha
+        });
       }
     } catch (error) {
-      console.error('Erro de conexão', error);
-      alert('Erro de conexão.');
+      toast.dismiss(loadingToast);
+      console.error(error);
+      // ERRO DE REDE
+      toast.error('Network Unreachable. Check connection.', {
+        style: { borderColor: '#dc2626' }
+      });
     }
   };
-
   return (
     <div className={`p-6 border-l-4 shadow-xl mb-8 transition-colors ${employeeToEdit ? 'bg-gray-800 border-yellow-500' : 'bg-gray-800 border-red-600'}`}>
       <div className="flex justify-between items-center mb-4">
