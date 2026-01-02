@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # --- Serviço Backend (Django) ---
   backend:
@@ -7,11 +5,13 @@ services:
     container_name: arasaka-backend
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
-      - ./backend:/app # Sincroniza sua pasta local com o container (Hot Reload)
+      - ./backend:/app
     ports:
       - "8000:8000"
     env_file:
       - .env
+    depends_on:
+      - db  # Espera o banco ligar antes de tentar conectar
 
   # --- Serviço Frontend (Next.js) ---
   frontend:
@@ -19,12 +19,26 @@ services:
     container_name: arasaka-frontend
     volumes:
       - ./frontend:/app
-      - /app/node_modules # Evita que o node_modules do container seja sobrescrito pelo local
+      - /app/node_modules
     ports:
       - "3000:3000"
     environment:
-      - WATCHPACK_POLLING=true # Ajuda o Windows a detectar mudanças de arquivo
+      - WATCHPACK_POLLING=true
     depends_on:
       - backend
 
-# (Futuramente adicionaremos o banco de dados Postgres aqui)
+  # --- Serviço Banco de Dados (Postgres) ---
+  db:
+    image: postgres:15-alpine
+    container_name: arasaka-db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persistência de dados
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
