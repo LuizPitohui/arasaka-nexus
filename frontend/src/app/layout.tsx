@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-// 1. Importar o Toaster
 import { Toaster } from 'sonner';
 
 const inter = Inter({ subsets: ["latin"] });
@@ -18,9 +17,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      {/* CORREÇÃO AQUI: Adicionamos suppressHydrationWarning para ignorar extensões do navegador */}
+      <body className={inter.className} suppressHydrationWarning={true}>
         {children}
-        {/* 2. Adicionar o Componente aqui (Configurado para Dark Mode) */}
         <Toaster 
           theme="dark" 
           position="top-right" 

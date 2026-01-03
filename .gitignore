@@ -8,48 +8,46 @@ Thumbs.db
 *.log
 .env
 .env.*
+screenshots/  # (Opcional: remova se quiser que as fotos do README subam para o Git)
+
+# ========================
+# DOCKER & INFRA
+# ========================
+postgres_data/
+.docker/
 
 # ========================
 # BACKEND (Python / Django)
 # ========================
-# Byte-compiled / Optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
+.Python
 
 # Distribution / Packaging
-.Python
 backend/build/
-backend/develop-eggs/
 backend/dist/
-backend/downloads/
-backend/eggs/
-backend/.eggs/
-backend/lib/
-backend/lib64/
-backend/parts/
-backend/sdist/
-backend/var/
-backend/wheels/
 backend/*.egg-info/
-backend/.installed.cfg
-backend/*.egg
 backend/MANIFEST
 
-# Virtual Environments (Poetry)
+# Virtual Environments & Dependency Managers
 backend/.venv/
+backend/.poetry/
 venv/
 env/
+.python-version
+poetry.lock  # (Opcional: em projetos profissionais, recomenda-se subir o lock)
 
-# Database (Nunca suba seu banco local!)
+# Database local (caso use sqlite para testes)
 backend/db.sqlite3
 backend/db.sqlite3-journal
+media/
 
-# Django Media (Uploads de usuários não vão pro git)
-backend/media/
+# Django Media (A estratégia correta)
+# Ignoramos todas as fotos enviadas, mas mantemos a pasta estrutural
+backend/media/employee_photos/*
+!backend/media/employee_photos/.gitkeep
 
 # ========================
 # FRONTEND (Node / Next.js)
@@ -58,15 +56,14 @@ frontend/node_modules/
 frontend/.pnp
 frontend/.pnp.js
 
-# Testing
-frontend/coverage/
-
-# Next.js
+# Next.js Build & Cache
 frontend/.next/
 frontend/out/
 frontend/build/
+frontend/next-env.d.ts
 
-# Debug
+# Logs de Erro do Node
 frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
+frontend/.turbo

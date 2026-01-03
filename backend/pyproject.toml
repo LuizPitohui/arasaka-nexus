@@ -11,7 +11,9 @@ dependencies = [
     "django (>=6.0,<7.0)",
     "djangorestframework (>=3.16.1,<4.0.0)",
     "django-cors-headers (>=4.9.0,<5.0.0)",
-    "psycopg2-binary (>=2.9.9)"
+    "psycopg2-binary (>=2.9.9)",
+    "pillow (>=12.0.0,<13.0.0)",
+    "djangorestframework-simplejwt (>=5.5.1,<6.0.0)"
 ]
 
 [tool.poetry]
