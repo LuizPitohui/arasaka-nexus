@@ -27,14 +27,15 @@ INSTALLED_APPS = [
     
     # Terceiros
     'rest_framework',
-    'corsheaders', # Necessário para o Next.js conectar
+    'corsheaders', 
+    'django_celery_results', # <--- [NOVO] Necessário para o sistema de tarefas
 
     # Meus Apps (Arasaka Modules)
     'employees',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware', # <--- OBRIGATÓRIO SER O PRIMEIRO
+    'corsheaders.middleware.CorsMiddleware', 
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -88,7 +89,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Manaus' # <--- [AJUSTE] Personalizado para sua base
 USE_I18N = True
 USE_TZ = True
 
@@ -104,7 +105,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://192.168.100.30:3000", # Seu IP local, se estiver testando em rede
+    "http://192.168.100.30:3000",
 ]
 
 # Configuração do Django REST Framework
@@ -112,8 +113,6 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
-    # Se quiser deixar a leitura pública sem login, mantenha PermissionClasses vazio por enquanto
-    # ou configure AllowAny nas Views específicas.
 }
 
 # Configuração do JWT (Tokens)
@@ -122,3 +121,13 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# --- ARASAKA CELERY CONFIGURATION [NOVO] ---
+# Define onde o Redis mora. O nome 'redis' vem do docker-compose.yml
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE

@@ -2,151 +2,124 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import NextImage from 'next/image';
-import Link from 'next/link'; // <--- IMPORTANTE: Módulo de Navegação
-import { ArrowLeft, Calendar, BookOpen } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, BookOpen, Clock, Calendar, Tag } from 'lucide-react';
 
-interface Chapter {
-  id: number;
-  number: string;
-  title: string;
-  release_date: string;
-}
-
-interface MangaDetail {
-  id: number;
-  title: string;
-  description: string;
-  cover: string;
-  author: string;
-  status: string;
-  chapters: Chapter[];
-}
-
-export default function MangaPage() {
+export default function MangaDetails() {
   const params = useParams();
   const router = useRouter();
-  const [manga, setManga] = useState<MangaDetail | null>(null);
+  const [manga, setManga] = useState<any>(null);
+  const [chapters, setChapters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Busca dados do Mangá
     fetch(`http://localhost:8000/api/mangas/${params.id}/`)
-      .then((res) => res.json())
-      .then((data) => {
+      .then(res => res.json())
+      .then(data => {
         setManga(data);
+        // Busca Capítulos Deste Mangá
+        // Nota: Precisamos filtrar os capítulos pelo ID do mangá. 
+        // Idealmente teríamos uma rota /api/mangas/{id}/chapters/, mas vamos filtrar no front por enquanto ou usar a lista se vier no serializer.
+        // Vamos assumir que criaremos uma rota específica ou filtraremos.
+        return fetch(`http://localhost:8000/api/chapters/?manga=${params.id}`);
+      })
+      .then(res => res.json())
+      .then(data => {
+        // Se a API retornar paginação, pegamos 'results', senão pegamos 'data' ou o array direto
+        const chaptersList = Array.isArray(data) ? data : (data.results || []);
+        setChapters(chaptersList);
         setLoading(false);
       })
-      .catch((err) => console.error('Falha na conexão:', err));
+      .catch(err => console.error(err));
   }, [params.id]);
 
-  if (loading) return <div className="min-h-screen bg-black text-red-600 flex items-center justify-center font-mono">CARREGANDO DADOS...</div>;
-  if (!manga) return <div className="min-h-screen bg-black text-zinc-500 flex items-center justify-center font-mono">ARQUIVO CORROMPIDO OU INEXISTENTE</div>;
-
-  const getCoverUrl = (path: string) => {
-    if (!path) return '';
-    if (path.startsWith('http')) return path;
-    const baseUrl = 'http://localhost:8000';
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    return `${baseUrl}${cleanPath}`;
-  };
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-red-600 animate-pulse">CARREGANDO DADOS...</div>;
+  if (!manga) return null;
 
   return (
     <main className="min-h-screen bg-black text-zinc-100">
-      {/* Botão de Voltar */}
-      <div className="absolute top-6 left-6 z-10">
-        <button 
-          onClick={() => router.back()}
-          className="flex items-center gap-2 bg-black/50 backdrop-blur-md border border-zinc-800 px-4 py-2 rounded-full hover:border-red-600 transition-colors text-sm font-bold"
-        >
-          <ArrowLeft className="w-4 h-4" /> VOLTAR
+      
+      {/* Banner de Fundo (Borrado) */}
+      <div className="fixed inset-0 h-96 z-0">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black z-10" />
+        <img src={manga.cover} className="w-full h-full object-cover opacity-30 blur-xl" />
+      </div>
+
+      <div className="relative z-10 max-w-5xl mx-auto p-6 md:pt-20">
+        
+        {/* Botão Voltar */}
+        <button onClick={() => router.push('/')} className="flex items-center gap-2 text-zinc-400 hover:text-white mb-6 transition-colors">
+          <ArrowLeft className="w-5 h-5" /> Voltar para Home
         </button>
-      </div>
 
-      {/* Hero Section */}
-      <div className="relative w-full h-[50vh] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/80 to-black z-[1]" />
-        <NextImage
-            src={getCoverUrl(manga.cover)}
-            alt={manga.title}
-            fill
-            className="object-cover opacity-50 blur-sm"
-            unoptimized={true}
-        />
-        
-        <div className="absolute bottom-0 left-0 w-full p-6 z-10 max-w-7xl mx-auto flex flex-col md:flex-row gap-8 items-end">
-          <div className="w-40 md:w-56 aspect-[3/4] relative rounded-lg overflow-hidden border-2 border-zinc-800 shadow-2xl shrink-0 hidden md:block">
-            <NextImage
-              src={getCoverUrl(manga.cover)}
-              alt={manga.title}
-              fill
-              className="object-cover"
-              unoptimized={true}
-            />
+        <div className="flex flex-col md:flex-row gap-8">
+          
+          {/* Capa Principal */}
+          <div className="w-full md:w-72 flex-shrink-0">
+            <img src={manga.cover} className="w-full rounded-lg shadow-2xl shadow-red-900/20 border border-zinc-800" />
+            <div className="mt-4 flex gap-2 flex-wrap">
+               {/* Categorias (Se houver) */}
+               {manga.categories && manga.categories.map((cat: any) => (
+                 <span key={cat.id} className="text-[10px] bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-zinc-400 uppercase tracking-wider">
+                   {cat.name}
+                 </span>
+               ))}
+            </div>
           </div>
 
-          <div className="mb-4">
-            <span className="inline-block bg-red-600 text-white text-xs font-bold px-2 py-1 rounded mb-2">
-              {manga.status}
-            </span>
-            <h1 className="text-4xl md:text-6xl font-black italic tracking-tighter mb-2">{manga.title}</h1>
-            <p className="text-lg text-zinc-400 font-mono">{manga.author}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Conteúdo Principal */}
-      <div className="max-w-7xl mx-auto p-6 grid md:grid-cols-3 gap-12">
-        
-        {/* Sinopse */}
-        <div className="md:col-span-2 space-y-8">
-          <section>
-            <h3 className="text-xl font-bold border-b border-zinc-800 pb-2 mb-4 text-red-500">SINOPSE</h3>
-            <p className="text-zinc-300 leading-relaxed text-sm md:text-base">
-              {manga.description}
+          {/* Informações */}
+          <div className="flex-1">
+            <h1 className="text-4xl md:text-5xl font-black mb-4 text-white">{manga.title}</h1>
+            <p className="text-zinc-500 text-sm mb-6 leading-relaxed max-w-2xl">
+              {manga.description ? manga.description : "Sem descrição disponível."}
             </p>
-          </section>
 
-          {/* Lista de Capítulos Linkada */}
-          <section>
-            <h3 className="text-xl font-bold border-b border-zinc-800 pb-2 mb-4 flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-red-500" />
-              CAPÍTULOS
+            <div className="flex items-center gap-6 mb-10 border-b border-zinc-800 pb-6">
+              <div className="flex flex-col">
+                <span className="text-zinc-500 text-xs uppercase tracking-widest">Status</span>
+                <span className="font-bold text-white">{manga.status}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-zinc-500 text-xs uppercase tracking-widest">Capítulos</span>
+                <span className="font-bold text-white">{chapters.length}</span>
+              </div>
+            </div>
+
+            {/* Lista de Capítulos */}
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-red-600" /> Capítulos Disponíveis
             </h3>
             
             <div className="grid gap-2">
-              {manga.chapters && manga.chapters.length > 0 ? (
-                manga.chapters.map((chapter) => (
+              {chapters.length === 0 ? (
+                <div className="p-4 bg-zinc-900/50 rounded border border-zinc-800 text-zinc-500 text-sm">
+                  Nenhum capítulo sincronizado ainda. O sistema está buscando...
+                </div>
+              ) : (
+                chapters.map((chapter) => (
                   <Link 
-                    key={chapter.id}
-                    href={`/read/${chapter.id}`} // <--- A CORREÇÃO TÁTICA
-                    className="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded hover:border-red-600 hover:bg-zinc-800 transition-all group text-left"
+                    key={chapter.id} 
+                    href={`/read/${chapter.id}`}
+                    className="flex items-center justify-between p-4 bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 hover:border-red-900/50 rounded transition-all group"
                   >
-                    <span className="font-bold text-zinc-200 group-hover:text-white">
-                      Capítulo {chapter.number} {chapter.title ? `- ${chapter.title}` : ''}
-                    </span>
-                    <span className="text-xs text-zinc-500 font-mono flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {new Date(chapter.release_date).toLocaleDateString()}
+                    <div className="flex items-center gap-4">
+                      <span className="text-lg font-bold text-zinc-300 group-hover:text-red-500 w-12">
+                        #{chapter.number}
+                      </span>
+                      <span className="text-sm text-zinc-400 group-hover:text-white truncate">
+                        {chapter.title || `Capítulo ${chapter.number}`}
+                      </span>
+                    </div>
+                    <span className="text-xs text-zinc-600">
+                      LER
                     </span>
                   </Link>
                 ))
-              ) : (
-                <div className="p-8 text-center border border-dashed border-zinc-800 text-zinc-500 rounded">
-                  NENHUM ARQUIVO DE DADOS ENCONTRADO (Sem capítulos cadastrados)
-                </div>
               )}
             </div>
-          </section>
-        </div>
-
-        {/* Stats */}
-        <div className="space-y-6">
-          <div className="bg-zinc-900/50 p-6 rounded-lg border border-zinc-800">
-            <h4 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-4">Classificação</h4>
-            <div className="text-3xl font-black text-white">4.9 <span className="text-sm text-zinc-600 font-normal">/ 5.0</span></div>
           </div>
         </div>
-
       </div>
     </main>
   );

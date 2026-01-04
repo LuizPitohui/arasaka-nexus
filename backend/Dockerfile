@@ -1,33 +1,29 @@
-# backend/Dockerfile
+# Usa a versão robusta do Python
+FROM python:3.12
 
-# Usa uma imagem oficial leve do Python
-FROM python:3.12-slim
+# Configurações de ambiente
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
 
-# Define variáveis de ambiente para evitar arquivos .pyc e logs presos no buffer
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Instala dependências do sistema necessárias para compilar pacotes Python
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
 # Instala o Poetry
+RUN pip install --upgrade pip
 RUN pip install poetry
 
-# Copia os arquivos de dependência
-COPY pyproject.toml poetry.lock ./
+# Copia APENAS os arquivos de configuração primeiro
+COPY pyproject.toml poetry.lock* /app/
 
-# Configura o Poetry para não criar virtualenv (o container JÁ É o ambiente isolado)
+# CORREÇÃO DEFINITIVA:
+# Adicionamos '--no-root'.
+# Isso diz: "Instale as libs, mas ignore o README e o projeto por enquanto."
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-root --no-interaction --no-ansi
+    && poetry lock \
+    && poetry install --no-interaction --no-ansi --no-root
 
-# Copia o restante do código do projeto
-COPY . .
+# Copia o restante do código (agora sim o README vem junto, mas não precisamos mais dele pra instalar)
+COPY . /app/
 
-# Comando padrão para rodar o servidor (exposto para todas as interfaces)
+EXPOSE 8000
+
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

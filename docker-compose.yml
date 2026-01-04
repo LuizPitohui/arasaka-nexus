@@ -1,5 +1,27 @@
+version: '3.8'
+
 services:
-  # --- Serviço Backend (Django) ---
+  # --- O MENSAGEIRO (REDIS) [NOVO] ---
+  redis:
+    image: redis:7-alpine
+    container_name: arasaka-redis
+    ports:
+      - "6379:6379"
+
+  # --- SISTEMA DE BANCO DE DADOS (POSTGRES) ---
+  db:
+    image: postgres:15-alpine
+    container_name: arasaka-db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+
+  # --- O CÉREBRO (DJANGO) ---
   backend:
     build: ./backend
     container_name: arasaka-backend
@@ -11,14 +33,37 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      # Conexão com o Redis (Adicionado Manualmente aqui para garantir)
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       - db
+      - redis
 
-  # --- Serviço Frontend (Next.js) ---
+  # --- O OPERÁRIO (CELERY WORKER) [NOVO] ---
+  celery:
+    build: ./backend # Usa o mesmo Dockerfile do backend
+    container_name: arasaka-worker
+    # Comando para rodar o worker em vez do servidor web
+    command: celery -A config worker --loglevel=info
+    volumes:
+      - ./backend:/app
+      - ./backend/media:/app/media
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+      - backend
+
+  # --- A FACE (NEXT.JS) ---
   frontend:
     build: ./frontend
     container_name: arasaka-frontend
-    # CORREÇÃO AQUI: Removemos o 'd' extra do final
     command: npx next dev --webpack
     volumes:
       - ./frontend:/app
@@ -31,19 +76,6 @@ services:
       - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
-
-  # --- Serviço Banco de Dados (Postgres) ---
-  db:
-    image: postgres:15-alpine
-    container_name: arasaka-db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-    ports:
-      - "5432:5432"
 
 volumes:
   postgres_data:
