@@ -2,79 +2,88 @@ from django.core.management.base import BaseCommand
 import requests
 from employees.tasks import task_import_manga_chapters
 import time
-import sys
+from datetime import datetime
 
 class Command(BaseCommand):
-    help = 'Semeia o banco de dados com mangás populares (Paginação Automática)'
+    help = 'Varredura temporal da MangaDex (Máquina do Tempo) para Extração Total'
 
     def add_arguments(self, parser):
-        parser.add_argument('--limit', type=int, default=100, help='Total de mangás para buscar')
-        parser.add_argument('--offset', type=int, default=0, help='Começar a partir de qual posição')
+        parser.add_argument(
+            '--start-date', 
+            type=str, 
+            default='2018-01-01T00:00:00', 
+            help='Data de início no formato YYYY-MM-DDTHH:MM:SS (Padrão: 2018-01-01T00:00:00)'
+        )
 
     def handle(self, *args, **options):
-        total_target = options['limit']
-        current_offset = options['offset']
+        # O cursor do tempo. Ele vai avançando conforme lemos os dados.
+        current_date_cursor = options['start_date']
+        BATCH_SIZE = 100
         
-        # A API da MangaDex limita a 100 por requisição.
-        # Nós faremos chamadas em lotes de 100 até atingir o seu 'limit'.
-        BATCH_SIZE = 100 
+        self.stdout.write(self.style.WARNING(f'--- INICIANDO MÁQUINA DO TEMPO: A PARTIR DE {current_date_cursor} ---'))
         
-        self.stdout.write(self.style.WARNING(f'--- INICIANDO PROTOCOLO SEED (ALVO: {total_target}) ---'))
+        total_enviados = 0
         
-        processed_count = 0
-        
-        while processed_count < total_target:
-            # Define o tamanho do lote atual (pode ser menor que 100 na última rodada)
-            current_limit = min(BATCH_SIZE, total_target - processed_count)
-            
-            self.stdout.write(f'>> Buscando lote de {current_limit} (Offset atual: {current_offset})...')
+        while True:
+            self.stdout.write(f'>> Viajando no tempo... Buscando 100 mangás criados após: {current_date_cursor}')
 
             url = "https://api.mangadex.org/manga"
+            
+            # Os parâmetros da viagem no tempo
             params = {
-                "limit": current_limit,
-                "offset": current_offset,
+                "limit": BATCH_SIZE,
+                "offset": 0, # O offset agora é sempre 0, pois a data é que empurra a fila
                 "availableTranslatedLanguage[]": ["pt-br"],
-                "order[followedCount]": "desc",
                 "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"],
-                "hasAvailableChapters": "true"
+                "hasAvailableChapters": "true",
+                "order[createdAt]": "asc",             # OBRIGATÓRIO: Do mais antigo para o mais novo
+                "createdAtSince": current_date_cursor  # OBRIGATÓRIO: A partir desta data
             }
 
             try:
-                response = requests.get(url, params=params, timeout=10)
+                response = requests.get(url, params=params, timeout=15)
                 
+                # Tratamento de escudo contra IP Ban (Rate Limit 429)
                 if response.status_code == 429:
-                    self.stdout.write(self.style.ERROR('Rate Limit atingido! Pausando por 5 segundos...'))
-                    time.sleep(5)
-                    continue # Tenta de novo o mesmo lote
+                    self.stdout.write(self.style.ERROR('⚠️ Escudo da API ativado (Rate Limit). Resfriando motores por 15 segundos...'))
+                    time.sleep(15)
+                    continue 
                 
                 if response.status_code != 200:
-                    self.stdout.write(self.style.ERROR(f'Erro na API: {response.status_code}'))
+                    self.stdout.write(self.style.ERROR(f'Erro Crítico na API: {response.status_code} - {response.text}'))
                     break
 
                 data = response.json()
                 mangas = data.get('data', [])
 
+                # Condição de Parada: Se voltar vazio, chegamos no futuro (hoje).
                 if not mangas:
-                    self.stdout.write(self.style.WARNING('Fim da lista da MangaDex. Nenhum item restante.'))
+                    self.stdout.write(self.style.SUCCESS('*** ALCANÇAMOS O PRESENTE. VARREDURA TOTAL CONCLUÍDA! ***'))
                     break
 
-                # Envia para o Celery
+                # Dispara as tarefas para a Usina (Celery)
                 for manga in mangas:
-                    manga_title = manga['attributes']['title'].get('en') or list(manga['attributes']['title'].values())[0]
-                    # print(f"Disparando: {manga_title}") # Comentado para não poluir o terminal
                     task_import_manga_chapters.delay(manga['id'])
-
-                count_in_batch = len(mangas)
-                processed_count += count_in_batch
-                current_offset += count_in_batch
                 
-                self.stdout.write(self.style.SUCCESS(f'   + {count_in_batch} disparados. Total: {processed_count}/{total_target}'))
+                count_in_batch = len(mangas)
+                total_enviados += count_in_batch
+                
+                # --- A ENGRENAGEM DA MÁQUINA DO TEMPO ---
+                # Pega a data de criação do ÚLTIMO mangá desta lista para ser o ponto de partida da próxima busca.
+                last_manga_date_raw = mangas[-1]['attributes']['createdAt']
+                
+                # O formato que vem é '2018-04-12T14:30:00+00:00'. 
+                # Cortamos os milissegundos/timezone para manter o padrão ISO que a API aceita no 'createdAtSince'
+                current_date_cursor = last_manga_date_raw[:19] 
 
-                # Pausa estratégica para não tomar Ban da API
-                time.sleep(1) 
+                self.stdout.write(self.style.SUCCESS(f'   + {count_in_batch} enviados ao Worker. Total Acumulado: {total_enviados}. Próximo salto: {current_date_cursor}'))
+
+                # Resfriamento obrigatório para manter o respeito com o servidor deles
+                time.sleep(1.5) 
 
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f'Erro fatal no loop: {str(e)}'))
+                self.stdout.write(self.style.ERROR(f'Falha no Motor Temporal: {str(e)}'))
+                self.stdout.write(self.style.WARNING(f'Para continuar de onde parou, rode o comando com: --start-date {current_date_cursor}'))
                 break
 
-        self.stdout.write(self.style.SUCCESS(f'--- OPERAÇÃO FINALIZADA. {processed_count} MANGÁS ENVIADOS AO WORKER ---'))
+        self.stdout.write(self.style.SUCCESS(f'--- OPERAÇÃO ENCERRADA. TOTAL DE {total_enviados} MANGÁS NA FILA ---'))
