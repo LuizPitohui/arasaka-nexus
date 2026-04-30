@@ -283,7 +283,13 @@ export default function ReaderPage() {
     : scrollProgress;
 
   return (
-    <main className="min-h-screen flex flex-col items-center" style={{ background: 'var(--bg-void)', color: 'var(--fg-primary)' }} ref={containerRef}>
+    <main
+      className={`min-h-screen flex flex-col items-center ${
+        prefs.mode === 'paged' || prefs.mode === 'double' ? 'pb-16 md:pb-0' : ''
+      }`}
+      style={{ background: 'var(--bg-void)', color: 'var(--fg-primary)' }}
+      ref={containerRef}
+    >
       {/* HUD HEADER */}
       <header
         className="fixed top-0 left-0 w-full backdrop-blur-md h-14 z-50 flex justify-between items-center px-4"
@@ -501,6 +507,21 @@ export default function ReaderPage() {
         )}
       </div>
 
+      {/* MOBILE PAGE NAV (paged/double only) — chevrons grandes + jumper */}
+      {(prefs.mode === 'paged' || prefs.mode === 'double') && (
+        <MobilePageBar
+          page={pageIndex + 1}
+          total={totalPages}
+          onPrev={goPrevPage}
+          onNext={goNextPage}
+          onJump={(target) => {
+            const clamped = Math.max(0, Math.min(totalPages - 1, target - 1));
+            setPageIndex(clamped);
+            window.scrollTo(0, 0);
+          }}
+        />
+      )}
+
       {/* FOOTER NAV */}
       {(prefs.mode === 'vertical' || prefs.mode === 'webtoon') && (
         <div className="w-full max-w-3xl p-8 pb-24 space-y-6 text-center" style={{ background: 'var(--bg-void)' }}>
@@ -576,7 +597,11 @@ function PagedView({ page, fitClass, onPrev, onNext }: {
   return (
     <div
       className="relative w-full flex items-center justify-center select-none gap-4 md:gap-8 px-2 md:px-6"
-      style={{ minHeight: 'calc(100vh - 3.5rem)', background: 'var(--bg-void)' }}
+      style={{
+        minHeight: 'calc(100vh - 3.5rem)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0)',
+        background: 'var(--bg-void)',
+      }}
     >
       {/* mobile/desktop hot zones — split L/R */}
       <button
@@ -617,7 +642,11 @@ function DoubleView({ left, right, onPrev, onNext }: {
   return (
     <div
       className="relative w-full flex items-center justify-center gap-4 md:gap-8 px-2 md:px-6 select-none"
-      style={{ minHeight: 'calc(100vh - 3.5rem)', background: 'var(--bg-void)' }}
+      style={{
+        minHeight: 'calc(100vh - 3.5rem)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0)',
+        background: 'var(--bg-void)',
+      }}
     >
       <ChevronEdge side="prev" onClick={onPrev} />
       <div
@@ -635,6 +664,144 @@ function DoubleView({ left, right, onPrev, onNext }: {
         )}
       </div>
       <ChevronEdge side="next" onClick={onNext} />
+    </div>
+  );
+}
+
+function MobilePageBar({
+  page,
+  total,
+  onPrev,
+  onNext,
+  onJump,
+}: {
+  page: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+  onJump: (target: number) => void;
+}) {
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const [draft, setDraft] = useState(String(page));
+
+  useEffect(() => {
+    setDraft(String(page));
+  }, [page]);
+
+  const submitJump = (e: React.FormEvent) => {
+    e.preventDefault();
+    const n = Number.parseInt(draft, 10);
+    if (Number.isFinite(n)) onJump(n);
+    setJumpOpen(false);
+  };
+
+  return (
+    <div
+      className="md:hidden fixed left-0 right-0 bottom-0 z-50"
+      style={{
+        background: 'rgba(0,0,0,0.95)',
+        backdropFilter: 'blur(8px)',
+        borderTop: '1px solid var(--arasaka-red)',
+        boxShadow: '0 -8px 24px rgba(0,0,0,0.6)',
+      }}
+    >
+      {jumpOpen && (
+        <form
+          onSubmit={submitJump}
+          className="flex items-center gap-2 px-4 py-3"
+          style={{ borderBottom: '1px solid var(--border-faint)' }}
+        >
+          <span
+            className="mono text-[10px] uppercase tracking-[0.3em] flex-shrink-0"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // GOTO
+          </span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={total}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            autoFocus
+            className="flex-1 mono text-sm tabular-nums px-3 py-2 focus:outline-none"
+            style={{
+              background: 'var(--bg-void)',
+              border: '1px solid var(--arasaka-red)',
+              color: 'var(--fg-primary)',
+            }}
+          />
+          <button
+            type="submit"
+            className="mono px-3 py-2 text-[11px] uppercase tracking-widest font-bold"
+            style={{
+              background: 'var(--arasaka-red)',
+              color: '#fff',
+              border: '1px solid var(--arasaka-red)',
+            }}
+          >
+            ▸ GO
+          </button>
+          <button
+            type="button"
+            onClick={() => setJumpOpen(false)}
+            className="mono px-2 py-2 text-[11px] uppercase tracking-widest"
+            style={{
+              border: '1px solid var(--border-mid)',
+              color: 'var(--fg-secondary)',
+            }}
+          >
+            ✕
+          </button>
+        </form>
+      )}
+
+      <div className="flex items-stretch h-14">
+        <button
+          onClick={onPrev}
+          disabled={page <= 1}
+          aria-label="Página anterior"
+          className="flex-1 flex items-center justify-center gap-2 mono text-[11px] uppercase tracking-widest transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          style={{
+            color: 'var(--fg-secondary)',
+            borderRight: '1px solid var(--border-faint)',
+          }}
+        >
+          <ChevronLeft className="w-5 h-5" /> PREV
+        </button>
+        <button
+          onClick={() => setJumpOpen((v) => !v)}
+          aria-label="Pular para página"
+          className="px-5 flex flex-col items-center justify-center mono leading-none transition-colors"
+          style={{
+            background: 'rgba(220,38,38,0.08)',
+            color: 'var(--arasaka-red)',
+            borderRight: '1px solid var(--border-faint)',
+            borderLeft: '1px solid var(--border-faint)',
+          }}
+        >
+          <span className="text-[9px] uppercase tracking-[0.3em]" style={{ color: 'var(--fg-muted)' }}>
+            PG
+          </span>
+          <span className="text-sm font-bold tabular-nums mt-0.5">
+            {String(page).padStart(2, '0')}/{String(total).padStart(2, '0')}
+          </span>
+        </button>
+        <button
+          onClick={onNext}
+          disabled={page >= total}
+          aria-label="Próxima página"
+          className="flex-1 flex items-center justify-center gap-2 mono text-[11px] uppercase tracking-widest font-bold transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          style={{
+            color: '#fff',
+            background: 'var(--arasaka-red)',
+            boxShadow: 'var(--glow-red)',
+          }}
+        >
+          NEXT <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
     </div>
   );
 }
