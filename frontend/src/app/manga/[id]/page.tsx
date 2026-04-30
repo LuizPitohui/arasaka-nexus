@@ -452,8 +452,12 @@ function AddToListMenu({
       }
       await refresh();
     } catch (err) {
-      console.error(err);
-      toast.error('// LIST_FAIL');
+      if (err instanceof ApiError && err.status === 429) {
+        toast.error(err.message);
+      } else {
+        console.error(err);
+        toast.error('// LIST_FAIL');
+      }
     } finally {
       setBusyId(null);
     }
@@ -474,8 +478,12 @@ function AddToListMenu({
       toast.success(`// CRIADA: ${list.name.toUpperCase()}`);
       await refresh();
     } catch (err) {
-      console.error(err);
-      toast.error('// CREATE_FAIL');
+      if (err instanceof ApiError && err.status === 429) {
+        toast.error(err.message);
+      } else {
+        console.error(err);
+        toast.error('// CREATE_FAIL');
+      }
     } finally {
       setCreating(false);
     }

@@ -147,10 +147,23 @@ export async function apiFetch<T = unknown>(
   const payload = isJson ? await response.json().catch(() => null) : await response.text();
 
   if (!response.ok) {
-    const message =
-      (isJson && payload && typeof payload === 'object' && 'detail' in payload
-        ? String((payload as { detail: unknown }).detail)
-        : `Request failed with status ${response.status}`);
+    let message: string;
+    if (response.status === 429) {
+      // surface a friendly retry hint when the backend throttle bites
+      const retryAfter = response.headers.get('Retry-After');
+      message = retryAfter
+        ? `Pedidos demais. Tente de novo em ${retryAfter}s.`
+        : 'Pedidos demais. Aguarde alguns segundos.';
+    } else if (
+      isJson &&
+      payload &&
+      typeof payload === 'object' &&
+      'detail' in payload
+    ) {
+      message = String((payload as { detail: unknown }).detail);
+    } else {
+      message = `Request failed with status ${response.status}`;
+    }
     throw new ApiError(message, response.status, payload);
   }
 

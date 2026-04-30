@@ -137,8 +137,10 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.ScopedRateThrottle",
     ),
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "60/min",
-        "user": "240/min",
+        # Generous defaults so casual navigation never trips throttle.
+        # Search/import stay tighter because they touch MangaDex (rate-limited upstream).
+        "anon": "200/min",
+        "user": "1200/min",
         "search": "30/min",
         "import": "10/min",
     },
