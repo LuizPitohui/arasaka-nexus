@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Filter, Loader2, X } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 
 import { api } from '@/lib/api';
 import type { Genre, MangaSummary, Paginated } from '@/lib/types';
@@ -67,7 +67,6 @@ function BrowseInner() {
       .catch(console.error)
       .finally(() => setLoading(false));
 
-    // Reflect filters in URL (without page so refresh starts at page 1)
     const urlQs = new URLSearchParams();
     selectedGenres.forEach((g) => urlQs.append('genre', g));
     if (statusFilter) urlQs.set('status', statusFilter);
@@ -93,26 +92,53 @@ function BrowseInner() {
   };
 
   const filtersActive =
-    selectedGenres.length > 0 || statusFilter !== '' || title.trim() !== '' || ordering !== 'recent';
+    selectedGenres.length > 0 ||
+    statusFilter !== '' ||
+    title.trim() !== '' ||
+    ordering !== 'recent';
+
+  const activeCount =
+    selectedGenres.length +
+    (statusFilter ? 1 : 0) +
+    (title.trim() ? 1 : 0) +
+    (ordering !== 'recent' ? 1 : 0);
 
   return (
-    <main className="min-h-screen bg-black text-zinc-100">
+    <main className="min-h-screen" style={{ background: 'var(--bg-base)', color: 'var(--fg-primary)' }}>
       <div className="max-w-7xl mx-auto p-6 md:p-10">
-        <header className="mb-8 border-b border-zinc-900 pb-6 flex items-center gap-3">
-          <Filter className="w-7 h-7 text-emerald-500" />
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Browse</p>
-            <h1 className="text-3xl font-black tracking-tighter mt-1">Catálogo</h1>
+        <header
+          className="mb-8 pb-6"
+          style={{ borderBottom: '1px solid var(--border-faint)' }}
+        >
+          <p
+            className="mono text-[11px] uppercase tracking-[0.3em]"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // QUERY_INTERFACE
+          </p>
+          <div className="flex items-baseline justify-between gap-4 mt-3 flex-wrap">
+            <h1
+              className="text-4xl md:text-5xl font-black tracking-tight"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Catálogo
+            </h1>
+            <p
+              className="mono text-[11px] uppercase tracking-widest"
+              style={{ color: 'var(--arasaka-red)' }}
+            >
+              {data
+                ? `${data.count.toLocaleString('pt-BR')} MATCH${data.count === 1 ? '' : 'ES'}`
+                : 'SEARCHING...'}
+              {activeCount > 0 && ` · ${activeCount} FILTRO${activeCount === 1 ? '' : 'S'}`}
+            </p>
           </div>
         </header>
 
         <div className="grid md:grid-cols-[260px_1fr] gap-8">
-          {/* Sidebar filters */}
-          <aside className="space-y-6">
-            <div>
-              <label className="block text-[11px] uppercase tracking-widest text-zinc-500 mb-2">
-                Título
-              </label>
+          {/* Sidebar */}
+          <aside className="space-y-7">
+            <FilterBlock label="01" title="Título">
               <input
                 value={title}
                 onChange={(e) => {
@@ -120,45 +146,56 @@ function BrowseInner() {
                   setPage(1);
                 }}
                 placeholder="Ex: One Piece"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-600"
+                className="w-full px-3 py-2 text-sm focus:outline-none"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-mid)',
+                  color: 'var(--fg-primary)',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--arasaka-red)')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border-mid)')}
               />
-            </div>
+            </FilterBlock>
 
-            <div>
-              <label className="block text-[11px] uppercase tracking-widest text-zinc-500 mb-2">
-                Status
-              </label>
+            <FilterBlock label="02" title="Status">
               <div className="flex flex-col gap-1">
-                {STATUS_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      setStatusFilter(opt.value);
-                      setPage(1);
-                    }}
-                    className={`text-left px-3 py-1.5 text-xs border transition ${
-                      statusFilter === opt.value
-                        ? 'border-red-600 bg-red-950/20 text-red-500'
-                        : 'border-zinc-800 text-zinc-400 hover:border-zinc-600'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                {STATUS_OPTIONS.map((opt) => {
+                  const active = statusFilter === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setStatusFilter(opt.value);
+                        setPage(1);
+                      }}
+                      className="mono text-left px-3 py-1.5 text-[11px] uppercase tracking-widest transition-colors"
+                      style={{
+                        border: '1px solid',
+                        borderColor: active ? 'var(--arasaka-red)' : 'var(--border-mid)',
+                        background: active ? 'rgba(220,38,38,0.08)' : 'transparent',
+                        color: active ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
-            </div>
+            </FilterBlock>
 
-            <div>
-              <label className="block text-[11px] uppercase tracking-widest text-zinc-500 mb-2">
-                Ordenação
-              </label>
+            <FilterBlock label="03" title="Ordenação">
               <select
                 value={ordering}
                 onChange={(e) => {
                   setOrdering(e.target.value);
                   setPage(1);
                 }}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-600"
+                className="w-full px-3 py-2 text-sm focus:outline-none"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-mid)',
+                  color: 'var(--fg-primary)',
+                }}
               >
                 {ORDERING_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -166,37 +203,67 @@ function BrowseInner() {
                   </option>
                 ))}
               </select>
-            </div>
+            </FilterBlock>
 
-            <div>
-              <label className="block text-[11px] uppercase tracking-widest text-zinc-500 mb-2">
-                Gêneros{selectedGenres.length > 0 && ` (${selectedGenres.length})`}
-              </label>
-              <div className="max-h-72 overflow-y-auto pr-1 space-y-1 border border-zinc-900 rounded p-2 bg-zinc-950/50">
+            <FilterBlock
+              label="04"
+              title={`Gêneros${selectedGenres.length > 0 ? ` · ${selectedGenres.length}` : ''}`}
+            >
+              <div
+                className="max-h-72 overflow-y-auto pr-1 space-y-1 p-2"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-faint)',
+                }}
+              >
                 {genres.map((g) => {
                   const active = selectedGenres.includes(g.slug);
                   return (
                     <button
                       key={g.id}
                       onClick={() => toggleGenre(g.slug)}
-                      className={`w-full text-left px-2 py-1 text-[11px] rounded flex justify-between items-center transition ${
-                        active
-                          ? 'bg-red-950/30 text-red-400'
-                          : 'text-zinc-400 hover:bg-zinc-900'
-                      }`}
+                      className="w-full text-left px-2 py-1 text-[11px] flex justify-between items-center transition-colors"
+                      style={{
+                        background: active ? 'rgba(220,38,38,0.12)' : 'transparent',
+                        color: active ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!active)
+                          e.currentTarget.style.background = 'var(--bg-base)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) e.currentTarget.style.background = 'transparent';
+                      }}
                     >
-                      <span>{g.name}</span>
-                      <span className="text-zinc-600">{g.manga_count}</span>
+                      <span className="truncate">{g.name}</span>
+                      <span
+                        className="mono text-[10px] tabular-nums shrink-0 ml-2"
+                        style={{ color: 'var(--fg-muted)' }}
+                      >
+                        {g.manga_count}
+                      </span>
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </FilterBlock>
 
             {filtersActive && (
               <button
                 onClick={clearFilters}
-                className="w-full flex items-center justify-center gap-2 text-xs text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-600 py-2 rounded transition"
+                className="mono w-full flex items-center justify-center gap-2 text-[11px] uppercase tracking-widest py-2 transition-colors"
+                style={{
+                  border: '1px solid var(--border-mid)',
+                  color: 'var(--fg-secondary)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+                  e.currentTarget.style.color = 'var(--arasaka-red)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-mid)';
+                  e.currentTarget.style.color = 'var(--fg-secondary)';
+                }}
               >
                 <X className="w-3 h-3" /> Limpar filtros
               </button>
@@ -206,8 +273,11 @@ function BrowseInner() {
           {/* Results */}
           <section>
             {loading ? (
-              <div className="py-20 flex justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+              <div
+                className="py-20 flex justify-center"
+                style={{ color: 'var(--arasaka-red)' }}
+              >
+                <Loader2 className="w-8 h-8 animate-spin" />
               </div>
             ) : (
               <>
@@ -222,12 +292,45 @@ function BrowseInner() {
   );
 }
 
+function FilterBlock({
+  label,
+  title,
+  children,
+}: {
+  label: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <span
+          className="mono text-[10px] uppercase tracking-widest"
+          style={{ color: 'var(--arasaka-red)' }}
+        >
+          {label}
+        </span>
+        <label
+          className="mono text-[11px] uppercase tracking-widest"
+          style={{ color: 'var(--fg-secondary)' }}
+        >
+          {title}
+        </label>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function BrowsePage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-black">
-          <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+        <div
+          className="min-h-screen flex items-center justify-center"
+          style={{ background: 'var(--bg-base)', color: 'var(--arasaka-red)' }}
+        >
+          <Loader2 className="w-8 h-8 animate-spin" />
         </div>
       }
     >

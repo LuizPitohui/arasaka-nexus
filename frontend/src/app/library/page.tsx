@@ -4,7 +4,15 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Bookmark, Heart, Loader2, ListPlus, PlayCircle, Plus, Trash2 } from 'lucide-react';
+import {
+  Bookmark,
+  Heart,
+  Loader2,
+  ListPlus,
+  PlayCircle,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
 
@@ -123,7 +131,10 @@ export default function LibraryPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-red-600">
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: 'var(--bg-base)', color: 'var(--arasaka-red)' }}
+      >
         <Loader2 className="w-8 h-8 animate-spin" />
       </div>
     );
@@ -131,17 +142,60 @@ export default function LibraryPage() {
   if (!data) return null;
 
   return (
-    <main className="min-h-screen bg-black text-zinc-100">
+    <main className="min-h-screen" style={{ background: 'var(--bg-base)', color: 'var(--fg-primary)' }}>
       <div className="max-w-7xl mx-auto p-6 md:p-10">
-        <header className="mb-8 border-b border-zinc-900 pb-6">
-          <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Personal Vault</p>
-          <h1 className="text-3xl font-black tracking-tighter mt-2">Biblioteca</h1>
+        <header
+          className="mb-8 pb-6"
+          style={{ borderBottom: '1px solid var(--border-faint)' }}
+        >
+          <p
+            className="mono text-[11px] uppercase tracking-[0.3em]"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // PERSONAL_VAULT
+          </p>
+          <div className="flex items-baseline justify-between gap-4 mt-3 flex-wrap">
+            <h1
+              className="text-4xl md:text-5xl font-black tracking-tight"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Biblioteca
+            </h1>
+            <p
+              className="mono text-[11px] uppercase tracking-widest"
+              style={{ color: 'var(--arasaka-red)' }}
+            >
+              {data.in_progress.length + data.favorites.length} ITENS · {data.lists.length}{' '}
+              LISTAS
+            </p>
+          </div>
         </header>
 
-        <div className="flex gap-1 mb-8 border-b border-zinc-900">
-          <TabButton active={tab === 'progress'} onClick={() => setTab('progress')} icon={<PlayCircle className="w-4 h-4" />} label={`Lendo (${data.in_progress.length})`} />
-          <TabButton active={tab === 'favorites'} onClick={() => setTab('favorites')} icon={<Heart className="w-4 h-4" />} label={`Favoritos (${data.favorites.length})`} />
-          <TabButton active={tab === 'lists'} onClick={() => setTab('lists')} icon={<Bookmark className="w-4 h-4" />} label={`Listas (${data.lists.length})`} />
+        <div
+          className="flex gap-1 mb-8"
+          style={{ borderBottom: '1px solid var(--border-faint)' }}
+        >
+          <TabButton
+            active={tab === 'progress'}
+            onClick={() => setTab('progress')}
+            icon={<PlayCircle className="w-3.5 h-3.5" />}
+            label="Lendo"
+            count={data.in_progress.length}
+          />
+          <TabButton
+            active={tab === 'favorites'}
+            onClick={() => setTab('favorites')}
+            icon={<Heart className="w-3.5 h-3.5" />}
+            label="Favoritos"
+            count={data.favorites.length}
+          />
+          <TabButton
+            active={tab === 'lists'}
+            onClick={() => setTab('lists')}
+            icon={<Bookmark className="w-3.5 h-3.5" />}
+            label="Listas"
+            count={data.lists.length}
+          />
         </div>
 
         {tab === 'progress' && <ProgressTab progress={data.in_progress} />}
@@ -168,49 +222,106 @@ function TabButton({
   onClick,
   icon,
   label,
+  count,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  count: number;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-3 text-xs uppercase tracking-widest border-b-2 transition-all ${
-        active
-          ? 'border-red-600 text-red-500'
-          : 'border-transparent text-zinc-500 hover:text-zinc-300'
-      }`}
+      className="mono flex items-center gap-2 px-4 py-3 text-[11px] uppercase tracking-[0.18em] transition-colors relative"
+      style={{
+        color: active ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+      }}
     >
       {icon}
       {label}
+      <span
+        className="tabular-nums"
+        style={{ color: active ? 'var(--arasaka-red)' : 'var(--fg-muted)' }}
+      >
+        [{count.toString().padStart(2, '0')}]
+      </span>
+      {active && (
+        <span
+          style={{
+            position: 'absolute',
+            bottom: -1,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: 'var(--arasaka-red)',
+            boxShadow: '0 0 8px var(--arasaka-red)',
+          }}
+        />
+      )}
     </button>
   );
 }
 
 function ProgressTab({ progress }: { progress: Progress[] }) {
   if (progress.length === 0) {
-    return <Empty hint="Você ainda não começou a ler nada. Volte ao catálogo e comece um capítulo." />;
+    return (
+      <Empty hint="Você ainda não começou a ler nada. Volte ao catálogo e comece um capítulo." />
+    );
   }
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {progress.map((p) => (
         <Link
           key={p.id}
           href={`/read/${p.chapter}`}
-          className="flex gap-4 p-4 border border-zinc-900 hover:border-red-900/60 bg-zinc-950/50 rounded transition-all"
+          className="group corners-sm flex gap-4 p-4 transition-colors"
+          style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-faint)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'var(--border-faint)';
+          }}
         >
-          <img src={p.manga_cover} alt={p.manga_title} className="w-16 h-24 object-cover rounded" />
+          <div
+            className="shrink-0 corners-sm overflow-hidden"
+            style={{ width: 64, height: 96, border: '1px solid var(--border-faint)' }}
+          >
+            <img
+              src={p.manga_cover}
+              alt={p.manga_title}
+              className="h-full w-full object-cover"
+            />
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500">Continuar lendo</p>
-            <h3 className="text-sm font-bold text-white truncate mt-1">{p.manga_title}</h3>
-            <p className="text-xs text-zinc-400 mt-1">
-              Capítulo {p.chapter_number}
+            <p
+              className="mono text-[10px] uppercase tracking-widest"
+              style={{ color: 'var(--arasaka-red)' }}
+            >
+              ▶ RESUME
+            </p>
+            <h3
+              className="text-sm font-bold truncate mt-1"
+              style={{ color: 'var(--fg-primary)' }}
+            >
+              {p.manga_title}
+            </h3>
+            <p
+              className="text-xs mt-1 truncate"
+              style={{ color: 'var(--fg-secondary)' }}
+            >
+              Cap. {p.chapter_number}
               {p.chapter_title ? ` — ${p.chapter_title}` : ''}
             </p>
-            <p className="text-[11px] text-zinc-600 mt-2">
-              Página {p.page_number || 1}
+            <p
+              className="mono text-[10px] mt-2 uppercase tracking-widest tabular-nums"
+              style={{ color: 'var(--fg-muted)' }}
+            >
+              PG {String(p.page_number || 1).padStart(3, '0')}
             </p>
           </div>
         </Link>
@@ -227,27 +338,51 @@ function FavoritesTab({
   onRemove: (id: number) => void;
 }) {
   if (favorites.length === 0) {
-    return <Empty hint='Sem favoritos ainda. Use o ícone de coração na página de cada mangá.' />;
+    return (
+      <Empty hint='Sem favoritos ainda. Use o ícone de coração na página de cada mangá.' />
+    );
   }
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-5 gap-y-8">
       {favorites.map((manga) => (
         <div key={manga.id} className="group relative">
-          <Link href={`/manga/${manga.id}`}>
-            <div className="aspect-[2/3] overflow-hidden rounded-md bg-zinc-900">
+          <Link href={`/manga/${manga.id}`} className="block corners-sm">
+            <div
+              className="aspect-[2/3] overflow-hidden"
+              style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-faint)',
+              }}
+            >
               <img
                 src={manga.cover || '/placeholder.jpg'}
                 alt={manga.title}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
               />
             </div>
-            <h3 className="mt-2 text-xs font-bold text-zinc-300 line-clamp-2">
+            <h3
+              className="mt-3 text-[13px] font-semibold line-clamp-2"
+              style={{ color: 'var(--fg-secondary)' }}
+            >
               {manga.title}
             </h3>
           </Link>
           <button
             onClick={() => onRemove(manga.id)}
-            className="absolute top-2 right-2 p-1.5 bg-black/80 border border-zinc-800 rounded hover:border-red-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+            className="absolute top-2 right-2 p-1.5 transition opacity-0 group-hover:opacity-100"
+            style={{
+              background: 'rgba(0,0,0,0.85)',
+              border: '1px solid var(--border-mid)',
+              color: 'var(--fg-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+              e.currentTarget.style.color = 'var(--arasaka-red)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-mid)';
+              e.currentTarget.style.color = 'var(--fg-secondary)';
+            }}
             title="Remover dos favoritos"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -280,13 +415,25 @@ function ListsTab({
           value={newListName}
           onChange={(e) => setNewListName(e.target.value)}
           placeholder="Nova lista (ex: Para reler)"
-          className="flex-1 bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-600"
+          className="flex-1 px-3 py-2 text-sm focus:outline-none"
+          style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-mid)',
+            color: 'var(--fg-primary)',
+          }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--arasaka-red)')}
+          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border-mid)')}
           maxLength={80}
         />
         <button
           type="submit"
           disabled={creating || !newListName.trim()}
-          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 px-4 py-2 text-xs font-bold uppercase tracking-widest"
+          className="mono flex items-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-widest disabled:opacity-40"
+          style={{
+            background: 'var(--arasaka-red)',
+            color: '#fff',
+            border: '1px solid var(--arasaka-red)',
+          }}
         >
           <Plus className="w-4 h-4" /> Criar
         </button>
@@ -294,40 +441,72 @@ function ListsTab({
 
       {lists.length === 0 ? (
         <Empty
-          icon={<ListPlus className="w-10 h-10 text-zinc-700" />}
+          icon={<ListPlus className="w-10 h-10" style={{ color: 'var(--fg-muted)' }} />}
           hint="Crie listas para organizar seus mangás (ex: Para ler, Lendo, Concluídos)."
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {lists.map((list) => (
             <article
               key={list.id}
-              className="border border-zinc-900 bg-zinc-950/50 p-5 rounded"
+              className="corners-sm p-5"
+              style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-faint)',
+              }}
             >
               <header className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="text-lg font-bold text-white">{list.name}</h3>
-                  <p className="text-[11px] text-zinc-500">
-                    {list.item_count} mangá{list.item_count === 1 ? '' : 's'}
+                <div className="min-w-0">
+                  <h3
+                    className="text-lg font-bold truncate"
+                    style={{ color: 'var(--fg-primary)' }}
+                  >
+                    {list.name}
+                  </h3>
+                  <p
+                    className="mono text-[10px] uppercase tracking-widest mt-0.5"
+                    style={{ color: 'var(--fg-muted)' }}
+                  >
+                    {list.item_count.toString().padStart(2, '0')} ENTRADAS
                   </p>
                 </div>
                 <button
                   onClick={() => onDelete(list.id)}
-                  className="text-zinc-600 hover:text-red-500 p-1"
+                  className="p-1 transition-colors"
+                  style={{ color: 'var(--fg-muted)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--arasaka-red)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--fg-muted)')}
                   title="Excluir lista"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
               </header>
               {list.description && (
-                <p className="text-xs text-zinc-500 mb-3">{list.description}</p>
+                <p
+                  className="text-xs mb-3"
+                  style={{ color: 'var(--fg-secondary)' }}
+                >
+                  {list.description}
+                </p>
               )}
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {list.items.slice(0, 6).map((item) => (
                   <Link
                     key={item.id}
                     href={`/manga/${item.manga.id}`}
-                    className="min-w-[60px] aspect-[2/3] rounded overflow-hidden bg-zinc-900 hover:ring-2 hover:ring-red-600 transition"
+                    className="shrink-0 corners-sm overflow-hidden transition"
+                    style={{
+                      width: 60,
+                      aspectRatio: '2 / 3',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--border-faint)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border-faint)';
+                    }}
                   >
                     <img
                       src={item.manga.cover || '/placeholder.jpg'}
@@ -337,7 +516,12 @@ function ListsTab({
                   </Link>
                 ))}
                 {list.item_count === 0 && (
-                  <p className="text-xs text-zinc-600 italic">Lista vazia.</p>
+                  <p
+                    className="mono text-[10px] uppercase tracking-widest italic"
+                    style={{ color: 'var(--fg-muted)' }}
+                  >
+                    // EMPTY_LIST
+                  </p>
                 )}
               </div>
             </article>
@@ -351,8 +535,15 @@ function ListsTab({
 function Empty({ icon, hint }: { icon?: React.ReactNode; hint: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      {icon ?? <Bookmark className="w-10 h-10 text-zinc-700 mb-3" />}
-      <p className="text-sm text-zinc-500 max-w-md">{hint}</p>
+      {icon ?? (
+        <Bookmark className="w-10 h-10 mb-3" style={{ color: 'var(--fg-muted)' }} />
+      )}
+      <p
+        className="mono text-[11px] uppercase tracking-widest max-w-md"
+        style={{ color: 'var(--fg-muted)' }}
+      >
+        // {hint}
+      </p>
     </div>
   );
 }
