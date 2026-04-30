@@ -1,14 +1,15 @@
-version: '3.8'
-
 services:
-  # --- O MENSAGEIRO (REDIS) [NOVO] ---
   redis:
     image: redis:7-alpine
     container_name: arasaka-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-  # --- SISTEMA DE BANCO DE DADOS (POSTGRES) ---
   db:
     image: postgres:15-alpine
     container_name: arasaka-db
@@ -20,12 +21,18 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  # --- O CÉREBRO (DJANGO) ---
   backend:
     build: ./backend
     container_name: arasaka-backend
-    command: python manage.py runserver 0.0.0.0:8000
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./backend:/app
       - ./backend/media:/app/media
@@ -34,18 +41,18 @@ services:
     env_file:
       - .env
     environment:
-      # Conexão com o Redis (Adicionado Manualmente aqui para garantir)
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379/1
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  # --- O OPERÁRIO (CELERY WORKER) [NOVO] ---
   celery:
-    build: ./backend # Usa o mesmo Dockerfile do backend
+    build: ./backend
     container_name: arasaka-worker
-    # Comando para rodar o worker em vez do servidor web
     command: celery -A config worker --loglevel=info --concurrency=2
     volumes:
       - ./backend:/app
@@ -55,12 +62,31 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379/1
     depends_on:
-      - db
-      - redis
-      - backend
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
 
-  # --- A FACE (NEXT.JS) ---
+  celery-beat:
+    build: ./backend
+    container_name: arasaka-beat
+    command: celery -A config beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379/1
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     container_name: arasaka-frontend
@@ -74,6 +100,7 @@ services:
     environment:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
     depends_on:
       - backend
 

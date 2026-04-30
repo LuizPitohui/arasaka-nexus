@@ -1,31 +1,75 @@
 from rest_framework import serializers
-from .models import Manga, Category, Chapter, ChapterImage
+
+from .models import Category, Chapter, ChapterImage, Manga
+
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = '__all__'
+        fields = ["id", "name", "slug"]
+
 
 class ChapterImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChapterImage
-        fields = ['id', 'image', 'order']
+        fields = ["id", "image", "order"]
 
-class ChapterSerializer(serializers.ModelSerializer):
-    # Agora o capítulo carrega suas páginas junto
-    images = ChapterImageSerializer(many=True, read_only=True)
-    
+
+class ChapterListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chapter
-        fields = '__all__'
+        fields = ["id", "mangadex_id", "number", "title", "release_date"]
 
-class MangaSerializer(serializers.ModelSerializer):
-    categories = CategorySerializer(many=True, read_only=True)
-    # Importante: No card do mangá, não precisamos carregar as imagens das páginas (pesaria muito)
-    # Então usamos um serializer simplificado ou mantemos como estava,
-    # mas o ChapterSerializer acima já resolve a visualização detalhada.
-    chapters = ChapterSerializer(many=True, read_only=True)
-    
+
+class ChapterDetailSerializer(serializers.ModelSerializer):
+    images = ChapterImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Chapter
+        fields = ["id", "mangadex_id", "manga", "number", "title", "release_date", "images"]
+
+
+class MangaListSerializer(serializers.ModelSerializer):
+    """Lightweight payload for list endpoints (search, home, listings)."""
+
+    categories = serializers.SerializerMethodField()
+
     class Meta:
         model = Manga
-        fields = '__all__'
+        fields = [
+            "id",
+            "mangadex_id",
+            "title",
+            "cover",
+            "status",
+            "is_active",
+            "categories",
+        ]
+
+    def get_categories(self, obj: Manga) -> list[str]:
+        return [c.name for c in obj.categories.all()[:5]]
+
+
+class MangaDetailSerializer(serializers.ModelSerializer):
+    categories = CategorySerializer(many=True, read_only=True)
+    chapter_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Manga
+        fields = [
+            "id",
+            "mangadex_id",
+            "title",
+            "alternative_title",
+            "description",
+            "cover",
+            "author",
+            "status",
+            "is_active",
+            "created_at",
+            "categories",
+            "chapter_count",
+        ]
+
+    def get_chapter_count(self, obj: Manga) -> int:
+        return obj.chapters.count()

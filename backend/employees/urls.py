@@ -1,26 +1,30 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
+from .auth_views import logout, me, register
 from .views import (
-    MangaViewSet, 
-    CategoryViewSet, 
-    ChapterViewSet, 
-    get_chapter_pages, 
-    search_mangas, 
+    CategoryViewSet,
+    ChapterViewSet,
+    MangaViewSet,
+    get_chapter_pages,
+    home_content,
     import_manga,
-    home_content # <--- Importe a nova função
+    search_mangas,
 )
 
 router = DefaultRouter()
-router.register(r'mangas', MangaViewSet)
-router.register(r'categories', CategoryViewSet)
-router.register(r'chapters', ChapterViewSet)
+router.register(r"mangas", MangaViewSet)
+router.register(r"categories", CategoryViewSet)
+router.register(r"chapters", ChapterViewSet)
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('read/<int:chapter_id>/', get_chapter_pages, name='read_chapter'),
-    path('search/', search_mangas, name='search_mangas'),
-    path('import/', import_manga, name='import_manga'),
-    
-    # NOVA ROTA
-    path('home-data/', home_content, name='home_content'),
+    path("", include(router.urls)),
+    path("read/<int:chapter_id>/", get_chapter_pages, name="read_chapter"),
+    path("search/", search_mangas, name="search_mangas"),
+    path("import/", import_manga, name="import_manga"),
+    path("home-data/", home_content, name="home_content"),
+    # Auth
+    path("auth/register/", register, name="register"),
+    path("auth/logout/", logout, name="logout"),
+    path("auth/me/", me, name="me"),
 ]

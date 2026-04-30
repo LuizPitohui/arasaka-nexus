@@ -1,265 +1,276 @@
-import requests
-from .models import Manga, Category, Chapter
+"""Domain services that orchestrate MangaDex syncs.
 
-# --- FUNÇÃO INDEPENDENTE PARA O LEITOR ---
-def get_mangadex_pages(mangadex_id):
-    """
-    Busca as URLs das páginas direto na API do MangaDex sem baixar nada.
-    Usada pelo endpoint de leitura (Streaming).
+All HTTP interactions go through ``MangaDexClient`` so that rate limits, retries,
+caching and the User-Agent policy are enforced centrally. These functions stay
+focused on translating MangaDex payloads into our local models.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Iterable, Optional
+
+from .mangadex_client import MangaDexClient, get_client
+from .models import Category, Chapter, Manga
+
+logger = logging.getLogger(__name__)
+
+
+# ----------------------------------------------------------------------
+# Reader helper (used by the chapter pages endpoint)
+# ----------------------------------------------------------------------
+def get_mangadex_pages(mangadex_chapter_id: str) -> list[dict[str, Any]]:
+    """Return the list of page URLs for a given MangaDex chapter id.
+
+    Uses the client's cache so repeated reads of the same chapter don't re-hit
+    the rate-limited ``/at-home/server`` endpoint.
     """
     try:
-        # 1. Pede ao MangaDex o servidor de imagens para este capítulo
-        response = requests.get(f"https://api.mangadex.org/at-home/server/{mangadex_id}")
-        response.raise_for_status()
-        data = response.json()
-
-        base_url = data['baseUrl']
-        chapter_hash = data['chapter']['hash']
-        filenames = data['chapter']['data'] # Arquivos de alta qualidade
-
-        # 2. Monta as URLs públicas
-        pages = []
-        for index, filename in enumerate(filenames):
-            # Formato: https://uploads.mangadex.org/data/{hash}/{filename}
-            full_url = f"{base_url}/data/{chapter_hash}/{filename}"
-            pages.append({
-                "id": index, 
-                "image": full_url,
-                "order": index
-            })
-            
-        return pages
-
-    except Exception as e:
-        print(f"Erro ao buscar páginas online: {e}")
+        data = get_client().get_at_home_server(mangadex_chapter_id)
+    except Exception as exc:
+        logger.exception("Falha ao obter páginas do MangaDex para %s: %s", mangadex_chapter_id, exc)
         return []
 
+    base_url = data.get("baseUrl")
+    chapter = data.get("chapter") or {}
+    chapter_hash = chapter.get("hash")
+    filenames = chapter.get("data") or []
 
-# --- A CLASSE DE INTELIGÊNCIA ---
-class MangaDexScanner:
-    def __init__(self):
-        self.api_url = "https://api.mangadex.org"
-        self.base_params = {
-            "limit": 20, 
-            "includes[]": "cover_art",
-            # ATUALIZADO: Aceita PT-BR e Inglês para evitar mangás vazios
-            "availableTranslatedLanguage[]": ["pt-br", "en"], 
+    if not (base_url and chapter_hash and filenames):
+        logger.warning("Resposta /at-home/server inválida para %s", mangadex_chapter_id)
+        return []
+
+    return [
+        {
+            "id": index,
+            "image": f"{base_url}/data/{chapter_hash}/{filename}",
+            "order": index,
         }
+        for index, filename in enumerate(filenames)
+    ]
 
-    def search_manga(self, query):
-        """
-        Busca mangás no MangaDex pelo nome (Para a barra de pesquisa).
-        Retorna uma lista de dicionários formatados.
-        """
-        print(f"--- BUSCANDO NO MANGADEX: {query} ---")
-        
-        # Parâmetros específicos da busca
+
+# ----------------------------------------------------------------------
+# Scanner
+# ----------------------------------------------------------------------
+class MangaDexScanner:
+    """Higher-level operations that read from MangaDex and persist locally."""
+
+    DEFAULT_LANGUAGES = ("pt-br", "en")
+    DEFAULT_CONTENT_RATING = ("safe", "suggestive", "erotica", "pornographic")
+
+    def __init__(self, client: Optional[MangaDexClient] = None):
+        self.client = client or get_client()
+
+    # --------------------------------------------------------------
+    # Search (used by the omni-search endpoint)
+    # --------------------------------------------------------------
+    def search_manga(self, query: str, *, limit: int = 12) -> list[dict[str, Any]]:
         params = {
             "title": query,
-            "limit": 12,
+            "limit": limit,
             "includes[]": "cover_art",
-            "availableTranslatedLanguage[]": ["pt-br", "en"],
-            "order[followedCount]": "desc" # Prioriza os famosos
+            "availableTranslatedLanguage[]": list(self.DEFAULT_LANGUAGES),
+            "order[followedCount]": "desc",
         }
-
         try:
-            response = requests.get(f"{self.api_url}/manga", params=params)
-            response.raise_for_status()
-            data = response.json()
-            
-            results = []
-            for manga_data in data['data']:
-                dex_id = manga_data['id']
-                attrs = manga_data['attributes']
-                
-                # Tratamento de Título
-                title = attrs['title'].get('en') or attrs['title'].get('ja-ro') or list(attrs['title'].values())[0]
-                
-                # Tratamento de Capa
-                cover_filename = ""
-                for rel in manga_data['relationships']:
-                    if rel['type'] == 'cover_art':
-                        cover_filename = rel['attributes']['fileName']
-                        break
-                
-                cover_url = f"https://uploads.mangadex.org/covers/{dex_id}/{cover_filename}.256.jpg" if cover_filename else ""
-                
-                results.append({
-                    "mangadex_id": dex_id,
-                    "title": title,
-                    "description": attrs['description'].get('pt-br') or attrs['description'].get('en') or "",
-                    "cover": cover_url,
-                    "author": "Desconhecido",
-                    "status": attrs.get('status', 'unknown').upper()
-                })
-            
-            return results
-
-        except Exception as e:
-            print(f"Erro na busca: {e}")
+            payload = self.client.list_manga(**params)
+        except Exception as exc:
+            logger.warning("Busca MangaDex falhou para '%s': %s", query, exc)
             return []
 
-    def sync_popular_mangas(self):
-        """
-        Busca os mangás mais populares/seguidos e cadastra no Nexus.
-        """
-        params = self.base_params.copy()
+        results: list[dict[str, Any]] = []
+        for manga_data in payload.get("data", []):
+            results.append(self._summarize(manga_data))
+        return results
+
+    # --------------------------------------------------------------
+    # Bulk sync helpers
+    # --------------------------------------------------------------
+    def sync_popular_mangas(self) -> bool:
+        params = self._base_list_params()
         params["order[followedCount]"] = "desc"
-
-        print("--- INICIANDO VARREDURA DE DESTAQUES MANGADEX ---")
+        logger.info("Iniciando sincronização de mangás populares")
         return self._process_batch(params)
 
-    def sync_latest_updates(self):
-        """
-        Busca os mangás atualizados recentemente.
-        """
-        params = self.base_params.copy()
+    def sync_latest_updates(self) -> bool:
+        params = self._base_list_params()
         params["order[latestUploadedChapter]"] = "desc"
-
-        print("--- INICIANDO VARREDURA DE ATUALIZAÇÕES ---")
+        logger.info("Iniciando sincronização de últimas atualizações")
         return self._process_batch(params)
 
-    def sync_chapters_for_manga(self, manga_obj):
-        """
-        Busca a lista de capítulos. 
-        ATUALIZADO: Agora busca conteúdo 'Safe', 'Suggestive', 'Erotica' e 'Pornographic'.
-        """
-        if not manga_obj.mangadex_id:
-            print(f"Pular: {manga_obj.title} não tem ID do MangaDex.")
-            return
-
-        print(f"--- BUSCANDO CAPÍTULOS PARA: {manga_obj.title} ---")
-        
-        url = f"{self.api_url}/manga/{manga_obj.mangadex_id}/feed"
-        
+    def import_manga_by_id(self, mangadex_id: str) -> Optional[Manga]:
         params = {
-            # Idiomas
-            "translatedLanguage[]": ["pt-br", "en"],
-            
-            # ORDEM: Do mais recente para o mais antigo (facilita pegar atualizações)
-            "order[chapter]": "desc",
-            
-            # FILTRO DE CONTEÚDO (O Segredo do conserto)
-            # Se não passar isso, o MangaDex esconde mangás 'Suggestive'
-            "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"],
-            
-            "limit": 500, # Aumentei o limite para pegar mais de uma vez
+            "ids[]": [mangadex_id],
+            "includes[]": "cover_art",
+            "contentRating[]": list(self.DEFAULT_CONTENT_RATING),
+            "limit": 1,
         }
+        if not self._process_batch(params):
+            return None
+        return Manga.objects.filter(mangadex_id=mangadex_id).first()
 
-        try:
-            # Loop simples para paginação (caso tenha mais de 500 capítulos)
-            offset = 0
-            total_synced = 0
-            
-            while True:
-                params["offset"] = offset
-                response = requests.get(url, params=params)
-                data = response.json()
-                
-                if not data['data']:
-                    break
+    def sync_chapters_for_manga(self, manga_obj: Manga) -> int:
+        if not manga_obj.mangadex_id:
+            logger.info("Pulando %s (sem mangadex_id)", manga_obj.title)
+            return 0
 
-                for ch_data in data['data']:
-                    attrs = ch_data['attributes']
-                    dex_id = ch_data['id']
-                    
-                    chap_num = attrs['chapter']
-                    # Tratamento para one-shots ou capítulos sem número
-                    if not chap_num:
-                        chap_num = 0 
-                    
-                    Chapter.objects.update_or_create(
-                        mangadex_id=dex_id,
-                        defaults={
-                            'manga': manga_obj,
-                            'number': chap_num,
-                            'title': attrs['title'] or "",
-                        }
-                    )
-                    total_synced += 1
+        logger.info("Sincronizando capítulos para: %s", manga_obj.title)
+        offset = 0
+        limit = 500
+        total_synced = 0
 
-                if total_synced >= data['total']:
-                    break
-                
-                offset += 500
-                if offset >= 10000: # Trava de segurança
-                    break
+        while True:
+            params = {
+                "translatedLanguage[]": list(self.DEFAULT_LANGUAGES),
+                "order[chapter]": "desc",
+                "contentRating[]": list(self.DEFAULT_CONTENT_RATING),
+                "limit": limit,
+                "offset": offset,
+            }
+            try:
+                payload = self.client.get_manga_feed(manga_obj.mangadex_id, **params)
+            except Exception as exc:
+                logger.warning("Falha no feed de %s: %s", manga_obj.title, exc)
+                break
 
-            print(f"-> Sincronizado: {total_synced} capítulos para {manga_obj.title}")
+            chapters = payload.get("data", [])
+            if not chapters:
+                break
 
-        except Exception as e:
-            print(f"Erro ao buscar capítulos de {manga_obj.title}: {e}")
-
-
-
-
-    def _process_batch(self, params):
-        """
-        Método interno auxiliar para processar listas de mangás.
-        Atualizado para incluir Categorias e Sincronização Automática.
-        """
-        try:
-            response = requests.get(f"{self.api_url}/manga", params=params)
-            response.raise_for_status()
-            data = response.json()
-
-            processed_count = 0
-
-            for manga_data in data['data']:
-                dex_id = manga_data['id']
-                attrs = manga_data['attributes']
-                
-                # Tratamento de Título
-                title = attrs['title'].get('en') or attrs['title'].get('ja-ro') or list(attrs['title'].values())[0]
-                
-                # Tratamento de Descrição
-                description = attrs['description'].get('pt-br') or attrs['description'].get('en') or ""
-                
-                # Tratamento de Capa
-                cover_filename = ""
-                for rel in manga_data['relationships']:
-                    if rel['type'] == 'cover_art':
-                        cover_filename = rel['attributes']['fileName']
-                        break
-                
-                if cover_filename:
-                    cover_url = f"https://uploads.mangadex.org/covers/{dex_id}/{cover_filename}.256.jpg"
-                else:
-                    cover_url = ""
-
-                # 1. Cria ou Atualiza o Mangá
-                manga_obj, created = Manga.objects.update_or_create(
+            for ch_data in chapters:
+                attrs = ch_data.get("attributes") or {}
+                dex_id = ch_data.get("id")
+                if not dex_id:
+                    continue
+                chap_num = attrs.get("chapter") or 0
+                try:
+                    chap_num_decimal = float(chap_num)
+                except (TypeError, ValueError):
+                    chap_num_decimal = 0
+                Chapter.objects.update_or_create(
                     mangadex_id=dex_id,
                     defaults={
-                        'title': title,
-                        'description': description,
-                        'cover': cover_url,
-                        'status': attrs.get('status', 'unknown').upper(),
-                    }
+                        "manga": manga_obj,
+                        "number": chap_num_decimal,
+                        "title": attrs.get("title") or "",
+                    },
                 )
+                total_synced += 1
 
-                # 2. NOVO: Processamento de Categorias (Tags)
-                # Isso permite que você filtre por "Ação", "Terror", etc. depois.
-                if 'tags' in attrs:
-                    for tag in attrs['tags']:
-                        tag_name = tag['attributes']['name']['en']
-                        # Cria a categoria se não existir
-                        category_obj, _ = Category.objects.get_or_create(
-                            name=tag_name,
-                            defaults={'slug': tag_name.lower().replace(' ', '-')}
-                        )
-                        # Adiciona a categoria ao mangá
-                        manga_obj.categories.add(category_obj)
-                
-                # 3. Se criou um mangá novo, já busca a lista de capítulos imediatamente
-                if created:
-                    self.sync_chapters_for_manga(manga_obj)
+            total_remote = payload.get("total") or 0
+            if total_synced >= total_remote:
+                break
+            offset += limit
+            if offset >= 10000:
+                logger.info("Limite de segurança de offset atingido para %s", manga_obj.title)
+                break
 
-                processed_count += 1
+        logger.info("Sincronizados %d capítulos para %s", total_synced, manga_obj.title)
+        return total_synced
 
-            print(f"--- OPERAÇÃO CONCLUÍDA. {processed_count} MANGÁS PROCESSADOS. ---")
-            return True
+    # --------------------------------------------------------------
+    # Internals
+    # --------------------------------------------------------------
+    def _base_list_params(self) -> dict[str, Any]:
+        return {
+            "limit": 20,
+            "includes[]": "cover_art",
+            "availableTranslatedLanguage[]": list(self.DEFAULT_LANGUAGES),
+            "contentRating[]": list(self.DEFAULT_CONTENT_RATING),
+            "hasAvailableChapters": "true",
+        }
 
-        except Exception as e:
-            print(f"Erro na varredura: {e}")
-            return False    
+    def _process_batch(self, params: dict[str, Any]) -> bool:
+        try:
+            payload = self.client.list_manga(**params)
+        except Exception as exc:
+            logger.exception("Falha em list_manga: %s", exc)
+            return False
+
+        for manga_data in payload.get("data", []):
+            manga_obj, created = self._upsert_manga(manga_data)
+            if created:
+                # New manga: pull its chapter feed in the same task context.
+                self.sync_chapters_for_manga(manga_obj)
+
+        return True
+
+    def _summarize(self, manga_data: dict[str, Any]) -> dict[str, Any]:
+        dex_id = manga_data.get("id")
+        attrs = manga_data.get("attributes") or {}
+        return {
+            "mangadex_id": dex_id,
+            "title": _pick_title(attrs.get("title") or {}),
+            "description": _pick_localized(attrs.get("description") or {}),
+            "cover": _build_cover_url(dex_id, manga_data.get("relationships") or []),
+            "author": "Desconhecido",
+            "status": (attrs.get("status") or "unknown").upper(),
+        }
+
+    def _upsert_manga(self, manga_data: dict[str, Any]) -> tuple[Manga, bool]:
+        summary = self._summarize(manga_data)
+        attrs = manga_data.get("attributes") or {}
+
+        manga_obj, created = Manga.objects.update_or_create(
+            mangadex_id=summary["mangadex_id"],
+            defaults={
+                "title": summary["title"],
+                "description": summary["description"],
+                "cover": summary["cover"],
+                "status": summary["status"],
+            },
+        )
+
+        tags = attrs.get("tags") or []
+        if tags:
+            self._apply_tags(manga_obj, tags)
+
+        return manga_obj, created
+
+    @staticmethod
+    def _apply_tags(manga_obj: Manga, tags: Iterable[dict[str, Any]]) -> None:
+        for tag in tags:
+            tag_attrs = (tag or {}).get("attributes") or {}
+            name_dict = tag_attrs.get("name") or {}
+            tag_name = name_dict.get("en") or next(iter(name_dict.values()), None)
+            if not tag_name:
+                continue
+            slug = tag_name.lower().replace(" ", "-")
+            category, _ = Category.objects.get_or_create(
+                slug=slug,
+                defaults={"name": tag_name},
+            )
+            manga_obj.categories.add(category)
+
+
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+def _pick_title(title_dict: dict[str, str]) -> str:
+    if not title_dict:
+        return "(sem título)"
+    return (
+        title_dict.get("en")
+        or title_dict.get("pt-br")
+        or title_dict.get("ja-ro")
+        or next(iter(title_dict.values()), "(sem título)")
+    )
+
+
+def _pick_localized(values: dict[str, str]) -> str:
+    if not values:
+        return ""
+    return values.get("pt-br") or values.get("en") or next(iter(values.values()), "")
+
+
+def _build_cover_url(dex_id: Optional[str], relationships: list[dict[str, Any]]) -> str:
+    if not dex_id:
+        return ""
+    for rel in relationships:
+        if rel.get("type") == "cover_art":
+            attrs = rel.get("attributes") or {}
+            filename = attrs.get("fileName")
+            if filename:
+                return f"https://uploads.mangadex.org/covers/{dex_id}/{filename}.256.jpg"
+    return ""
