@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Flame, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 import { api } from '@/lib/api';
 import type { MangaSummary, Paginated } from '@/lib/types';
@@ -22,19 +22,45 @@ export default function PopularPage() {
   }, [page]);
 
   return (
-    <main className="min-h-screen bg-black text-zinc-100">
+    <main className="min-h-screen" style={{ background: 'var(--bg-base)', color: 'var(--fg-primary)' }}>
       <div className="max-w-7xl mx-auto p-6 md:p-10">
-        <header className="mb-8 border-b border-zinc-900 pb-6 flex items-center gap-3">
-          <Flame className="w-7 h-7 text-red-500" />
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Trending</p>
-            <h1 className="text-3xl font-black tracking-tighter mt-1">Mais Populares</h1>
+        <header
+          className="mb-10 pb-6"
+          style={{ borderBottom: '1px solid var(--border-faint)' }}
+        >
+          <p
+            className="mono text-[11px] uppercase tracking-[0.3em]"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // TRENDING_FEED
+          </p>
+          <div className="flex items-baseline justify-between gap-4 mt-3 flex-wrap">
+            <h1
+              className="text-4xl md:text-5xl font-black tracking-tight"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Mais <span style={{ color: 'var(--arasaka-red)' }}>Populares</span>
+            </h1>
+            {data && (
+              <p
+                className="mono text-[11px] uppercase tracking-widest"
+                style={{ color: 'var(--arasaka-red)' }}
+              >
+                RANK · {data.count.toLocaleString('pt-BR')} ENTRADAS
+              </p>
+            )}
           </div>
+          <p
+            className="mono text-[11px] mt-3 uppercase tracking-widest"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            Ordenado por engajamento e favoritos da rede.
+          </p>
         </header>
 
         {loading ? (
-          <div className="py-20 flex justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+          <div className="py-20 flex justify-center" style={{ color: 'var(--arasaka-red)' }}>
+            <Loader2 className="w-8 h-8 animate-spin" />
           </div>
         ) : (
           <>

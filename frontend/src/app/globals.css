@@ -48,6 +48,10 @@
 
   --background: var(--bg-void);
   --foreground: var(--fg-primary);
+
+  /* aliases used by handoff pages */
+  --bg-base: var(--bg-void);
+  --arasaka-red-bright: var(--arasaka-red-hover);
 }
 
 @theme inline {
