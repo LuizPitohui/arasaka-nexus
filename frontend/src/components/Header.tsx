@@ -253,26 +253,42 @@ function MobileDrawer({
 }) {
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — inline position to bypass any cascade conflict */}
       <div
         onClick={onClose}
         aria-hidden
-        className="md:hidden fixed inset-0 z-50 transition-opacity"
+        className="md:hidden"
         style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 55,
           background: 'rgba(0,0,0,0.7)',
           backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
           opacity: open ? 1 : 0,
           pointerEvents: open ? 'auto' : 'none',
+          transition: 'opacity 200ms var(--ease-out)',
         }}
       />
 
-      {/* Drawer panel — slides from left */}
+      {/* Drawer panel — slides from left.
+          NOTE: must NOT use the .scanlines utility class here — it sets
+          position: relative and overrides Tailwind's `fixed`, dropping the
+          drawer back into document flow. Inline `position: fixed` keeps it
+          authoritative regardless of cascade order. */}
       <aside
         role="dialog"
         aria-modal="true"
         aria-label="Menu de navegação"
-        className="md:hidden fixed top-0 left-0 bottom-0 z-50 w-80 max-w-[85vw] flex flex-col scanlines"
+        className="md:hidden flex flex-col"
         style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 60,
+          width: 320,
+          maxWidth: '85vw',
           background: 'var(--bg-deck)',
           borderRight: '1px solid var(--arasaka-red)',
           boxShadow: '8px 0 32px rgba(0,0,0,0.7)',
