@@ -53,6 +53,9 @@ media/
 # Cursor de retomada do seed_library
 backend/.seed_cursor
 
+# Artefatos brutos do designer (handoff) — aplicados no frontend
+frontend-handoff/
+
 # Django Media (A estratégia correta)
 # Ignoramos todas as fotos enviadas, mas mantemos a pasta estrutural
 backend/media/employee_photos/*

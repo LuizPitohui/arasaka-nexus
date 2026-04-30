@@ -1,45 +1,105 @@
+/* ============================================================
+   Arasaka Nexus — globals.css
+   Replaces frontend/src/app/globals.css
+   ============================================================ */
+
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* layered blacks */
+  --bg-void:      #000000;
+  --bg-deck:      #0a0a0a;
+  --bg-terminal:  #0f0f12;
+  --bg-elevated:  #16161a;
+
+  /* foreground */
+  --fg-primary:   #f4f4f5;
+  --fg-secondary: #a1a1aa;
+  --fg-muted:     #52525b;
+  --fg-faint:     #3f3f46;
+
+  /* arasaka red */
+  --arasaka-red:        #dc2626;
+  --arasaka-red-hover:  #ef4444;
+  --arasaka-red-deep:   #991b1b;
+  --arasaka-red-glow:   rgba(220, 38, 38, 0.35);
+  --arasaka-red-mist:   rgba(239, 68, 68, 0.15);
+
+  /* neon accents */
+  --neon-cyan:    #22d3ee;
+  --neon-yellow:  #facc15;
+  --neon-magenta: #e11d74;
+  --neon-green:   #16a34a;
+
+  /* borders */
+  --border-faint:  #27272a;
+  --border-mid:    #3f3f46;
+  --border-accent: var(--arasaka-red);
+
+  /* type */
+  --font-display: 'Rajdhani', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+  --font-body:    'Inter', system-ui, -apple-system, sans-serif;
+
+  /* glow shadows (no soft drops) */
+  --glow-red:        0 0 24px rgba(220,38,38,0.25), 0 0 4px rgba(220,38,38,0.5);
+  --glow-red-strong: 0 0 48px rgba(220,38,38,0.45), 0 0 8px rgba(239,68,68,0.7);
+  --glow-cyan:       0 0 24px rgba(34,211,238,0.25);
+
+  /* legacy compat for tailwind theme inline */
+  --background: var(--bg-void);
+  --foreground: var(--fg-primary);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html, body {
+  background: var(--bg-void);
+  color: var(--fg-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* selection */
+::selection { background: var(--arasaka-red); color: #fff; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-terminal); }
+::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--arasaka-red); }
+
+/* focus */
+:focus-visible { outline: 2px solid var(--arasaka-red); outline-offset: 2px; }
+
+/* glitch keyframes — burst not loop */
+@keyframes glitch-burst {
+  0%, 88%, 100% { transform: none; text-shadow: none; }
+  90% { transform: translate(-2px, 0); text-shadow: -2px 0 var(--neon-cyan), 2px 0 var(--neon-magenta); }
+  92% { transform: translate(2px, 0); text-shadow: 2px 0 var(--neon-cyan), -2px 0 var(--neon-magenta); }
+  94% { transform: none; text-shadow: -1px 0 var(--neon-cyan), 1px 0 var(--neon-magenta); }
+}
+.glitch { animation: glitch-burst 6s infinite; }
+
+@keyframes blink-cursor { 50% { opacity: 0; } }
+.blink { animation: blink-cursor 1s steps(1) infinite; }
+
+/* bracket corners — for focused inputs and active selections */
+.bracket { position: relative; }
+.bracket::before, .bracket::after {
+  content: ""; position: absolute; width: 14px; height: 14px;
+  border: 2px solid var(--arasaka-red);
+}
+.bracket::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
+.bracket::after  { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* Estilo para Scrollbars Webkit (Chrome, Edge, Safari) */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #0f0f0f; 
-}
-
-::-webkit-scrollbar-thumb {
-  background: #333; 
-  border-radius: 2px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #ef4444; /* Vermelho no hover */
 }

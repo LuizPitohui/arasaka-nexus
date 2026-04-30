@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 
 import { auth, ApiError } from '@/lib/api';
+import { ChevronMark } from '@/components/Brand';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -50,6 +51,9 @@ export default function LoginPage() {
         <div className="absolute top-0 left-0 w-full h-1 bg-red-600"></div>
 
         <div className="text-center mb-10">
+          <div className="flex justify-center mb-4">
+            <ChevronMark size={56} />
+          </div>
           <h1 className="text-4xl font-extrabold text-white tracking-tighter">
             ARASAKA <span className="text-red-600">NEXUS</span>
           </h1>

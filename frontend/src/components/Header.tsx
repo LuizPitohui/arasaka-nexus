@@ -14,6 +14,7 @@ import {
   User,
 } from 'lucide-react';
 
+import Brand from '@/components/Brand';
 import { ApiError, api, auth, tokenStore } from '@/lib/api';
 
 type Me = { id: number; username: string; email: string; is_staff: boolean };
@@ -59,8 +60,8 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 bg-black/95 backdrop-blur-md border-b border-zinc-900">
       <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
-        <Link href="/" className="text-xl font-black italic tracking-tighter text-white">
-          ARASAKA <span className="text-red-600">NEXUS</span>
+        <Link href="/" aria-label="Arasaka Nexus — Home">
+          <Brand size={20} />
         </Link>
 
         <nav className="hidden md:flex items-center gap-5 text-[11px] uppercase tracking-widest text-zinc-400">
