@@ -8,7 +8,13 @@ Thumbs.db
 *.log
 .env
 .env.*
+!.env.example
+!frontend/.env.example
 screenshots/  # (Opcional: remova se quiser que as fotos do README subam para o Git)
+
+# Celery Beat runtime state
+backend/celerybeat-schedule
+backend/celerybeat-schedule.*
 
 # ========================
 # DOCKER & INFRA
@@ -43,6 +49,9 @@ poetry.lock  # (Opcional: em projetos profissionais, recomenda-se subir o lock)
 backend/db.sqlite3
 backend/db.sqlite3-journal
 media/
+
+# Cursor de retomada do seed_library
+backend/.seed_cursor
 
 # Django Media (A estratégia correta)
 # Ignoramos todas as fotos enviadas, mas mantemos a pasta estrutural
