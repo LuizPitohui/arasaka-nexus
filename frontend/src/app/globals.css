@@ -52,6 +52,63 @@
   /* aliases used by handoff pages */
   --bg-base: var(--bg-void);
   --arasaka-red-bright: var(--arasaka-red-hover);
+
+  /* semantic */
+  --color-success: var(--neon-green);
+  --color-warn:    var(--neon-yellow);
+  --color-danger:  var(--arasaka-red);
+  --color-info:    var(--neon-cyan);
+
+  /* type scale */
+  --fs-3xs:     0.625rem;  /* 10 */
+  --fs-2xs:     0.6875rem; /* 11 */
+  --fs-xs:      0.75rem;   /* 12 */
+  --fs-sm:      0.875rem;  /* 14 */
+  --fs-base:    1rem;
+  --fs-lg:      1.25rem;
+  --fs-xl:      1.75rem;
+  --fs-2xl:     2.25rem;
+  --fs-3xl:     3rem;
+  --fs-display: 4.5rem;
+
+  --lh-tight:  1.05;
+  --lh-snug:   1.25;
+  --lh-normal: 1.5;
+  --lh-loose:  1.7;
+
+  --tk-mono-loose: 0.3em;
+  --tk-mono-mid:   0.2em;
+  --tk-mono-tight: 0.05em;
+  --tk-display:    -0.04em;
+
+  /* spacing (8-pt grid) */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  24px;
+  --sp-6:  32px;
+  --sp-7:  48px;
+  --sp-8:  64px;
+  --sp-9:  96px;
+
+  /* radii — cyberpunk = sharp */
+  --r-0: 0;
+  --r-1: 2px;
+  --r-2: 4px;
+
+  /* extra glows */
+  --glow-yellow:  0 0 24px rgba(250,204,21,0.20);
+  --glow-magenta: 0 0 24px rgba(225,29,116,0.25);
+  --shadow-deck:  0 16px 32px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.04);
+
+  /* motion */
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-std:   cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast:   80ms;
+  --dur-snappy: 120ms;
+  --dur-mid:    200ms;
+  --dur-slow:   500ms;
 }
 
 @theme inline {
