@@ -1,12 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, BookOpen, Heart } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, Heart, ListPlus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
+
+type ListSummary = {
+  id: number;
+  name: string;
+  item_count: number;
+  items: { id: number; manga: { id: number } }[];
+};
 
 type Category = { id: number; name: string; slug: string };
 
@@ -224,6 +231,7 @@ export default function MangaDetails() {
                   {isFavorite ? 'IN_VAULT' : 'VAULT'}
                 </span>
               </button>
+              {params?.id && <AddToListMenu mangaId={Number(params.id)} authed={authed} />}
             </div>
 
             {manga.alternative_title && (
@@ -375,6 +383,269 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
       >
         {value}
       </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Add-to-List menu (popover with existing lists toggle + create new)
+// ---------------------------------------------------------------------------
+function AddToListMenu({
+  mangaId,
+  authed,
+}: {
+  mangaId: number;
+  authed: boolean;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [lists, setLists] = useState<ListSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get<{ results: ListSummary[] } | ListSummary[]>(
+        '/accounts/lists/',
+      );
+      setLists(Array.isArray(res) ? res : res.results ?? []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    refresh();
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, refresh]);
+
+  const inList = (l: ListSummary) =>
+    l.items?.some((it) => it.manga.id === mangaId) ?? false;
+
+  const toggle = async (l: ListSummary) => {
+    setBusyId(l.id);
+    try {
+      if (inList(l)) {
+        await api.delete(`/accounts/lists/${l.id}/items/${mangaId}/`);
+        toast.success(`// REMOVIDO DE ${l.name.toUpperCase()}`);
+      } else {
+        await api.post(`/accounts/lists/${l.id}/add/`, { manga_id: mangaId });
+        toast.success(`// ADICIONADO A ${l.name.toUpperCase()}`);
+      }
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      toast.error('// LIST_FAIL');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setCreating(true);
+    try {
+      const list = await api.post<{ id: number; name: string }>(
+        '/accounts/lists/',
+        { name: trimmed },
+      );
+      await api.post(`/accounts/lists/${list.id}/add/`, { manga_id: mangaId });
+      setNewName('');
+      toast.success(`// CRIADA: ${list.name.toUpperCase()}`);
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      toast.error('// CREATE_FAIL');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const onClickButton = () => {
+    if (!authed) {
+      router.push(`/login?next=/manga/${mangaId}`);
+      return;
+    }
+    setOpen((o) => !o);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={onClickButton}
+        title="Adicionar a uma lista"
+        className="flex items-center gap-2 px-4 py-2 mono text-[11px] uppercase tracking-widest transition-all"
+        style={{
+          background: open ? 'rgba(220,38,38,0.1)' : 'transparent',
+          border: open
+            ? '1px solid var(--arasaka-red)'
+            : '1px solid var(--border-mid)',
+          color: open ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+        }}
+      >
+        <ListPlus className="w-3.5 h-3.5" />
+        <span className="hidden md:inline">+ LIST</span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-2 w-72 z-40 bracket"
+          style={{
+            background: 'var(--bg-deck)',
+            border: '1px solid var(--border-faint)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          }}
+        >
+          <div
+            className="px-3 py-2 mono text-[10px] uppercase tracking-[0.3em]"
+            style={{
+              background: 'var(--bg-elevated)',
+              borderBottom: '1px solid var(--arasaka-red)',
+              color: 'var(--fg-muted)',
+            }}
+          >
+            // ADD_TO_READING_LIST
+          </div>
+
+          <div className="max-h-64 overflow-y-auto">
+            {loading && (
+              <div
+                className="p-4 mono text-[10px] uppercase tracking-widest text-center"
+                style={{ color: 'var(--fg-muted)' }}
+              >
+                // LOADING_LISTS...
+              </div>
+            )}
+            {!loading && lists.length === 0 && (
+              <div
+                className="p-4 mono text-[10px] uppercase tracking-widest text-center"
+                style={{ color: 'var(--fg-muted)' }}
+              >
+                // NO_LISTS_YET
+              </div>
+            )}
+            {!loading &&
+              lists.map((l) => {
+                const active = inList(l);
+                return (
+                  <button
+                    key={l.id}
+                    onClick={() => toggle(l)}
+                    disabled={busyId === l.id}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left transition-colors disabled:opacity-50"
+                    style={{
+                      background: active
+                        ? 'rgba(220,38,38,0.08)'
+                        : 'transparent',
+                      color: active
+                        ? 'var(--arasaka-red)'
+                        : 'var(--fg-secondary)',
+                      borderBottom: '1px solid var(--border-faint)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active)
+                        e.currentTarget.style.background = 'var(--bg-elevated)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active)
+                        e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      {active ? (
+                        <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                      ) : (
+                        <span
+                          className="w-3.5 h-3.5 flex-shrink-0"
+                          style={{
+                            border: '1px solid var(--border-mid)',
+                          }}
+                        />
+                      )}
+                      <span className="text-sm truncate">{l.name}</span>
+                    </span>
+                    <span
+                      className="mono text-[9px] tabular-nums uppercase tracking-widest flex-shrink-0"
+                      style={{
+                        color: active
+                          ? 'var(--arasaka-red)'
+                          : 'var(--fg-muted)',
+                      }}
+                    >
+                      {String(l.item_count).padStart(2, '0')}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+
+          <form
+            onSubmit={create}
+            className="p-3 space-y-2"
+            style={{ borderTop: '1px solid var(--border-faint)' }}
+          >
+            <p
+              className="mono text-[10px] uppercase tracking-[0.3em]"
+              style={{ color: 'var(--arasaka-red)' }}
+            >
+              // NEW_LIST
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Nome da lista"
+                maxLength={80}
+                className="flex-1 px-3 py-2 text-sm focus:outline-none mono"
+                style={{
+                  background: 'var(--bg-void)',
+                  border: '1px solid var(--border-mid)',
+                  color: 'var(--fg-primary)',
+                }}
+                onFocus={(e) =>
+                  (e.currentTarget.style.borderColor = 'var(--arasaka-red)')
+                }
+                onBlur={(e) =>
+                  (e.currentTarget.style.borderColor = 'var(--border-mid)')
+                }
+              />
+              <button
+                type="submit"
+                disabled={creating || !newName.trim()}
+                className="mono px-3 py-2 text-[11px] uppercase tracking-widest font-bold disabled:opacity-40"
+                title="Criar lista e adicionar este mangá"
+                style={{
+                  background: 'var(--arasaka-red)',
+                  color: '#fff',
+                  border: '1px solid var(--arasaka-red)',
+                }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
