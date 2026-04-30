@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Clock, Flame, Loader2, PlayCircle, Search } from 'lucide-react';
+import { Clock, Flame, PlayCircle, Search } from 'lucide-react';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
+import Loader from '@/components/Loader';
 import { MangaCard, type GridManga } from '@/components/MangaGrid';
 
 type FeaturedManga = {
@@ -145,20 +146,8 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center gap-4"
-        style={{ background: 'var(--bg-void)' }}
-      >
-        <Loader2
-          className="w-10 h-10 animate-spin"
-          style={{ color: 'var(--arasaka-red)' }}
-        />
-        <p
-          className="mono text-[11px] uppercase tracking-[0.3em] animate-pulse"
-          style={{ color: 'var(--arasaka-red)' }}
-        >
-          // SYNCING_GLOBAL_DATABASE...
-        </p>
+      <div className="min-h-screen" style={{ background: 'var(--bg-void)' }}>
+        <Loader fullscreen label="SYNCING_GLOBAL_DATABASE" caption="// PULLING_HOMEPAGE_FEED" />
       </div>
     );
   }
@@ -446,10 +435,7 @@ function SearchBar({
       <div className="relative w-full md:w-[420px]">
         <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
           {searching ? (
-            <Loader2
-              className="w-4 h-4 animate-spin"
-              style={{ color: 'var(--arasaka-red)' }}
-            />
+            <span className="loader-dot" style={{ color: 'var(--arasaka-red)' }} />
           ) : (
             <Search
               className="w-4 h-4"

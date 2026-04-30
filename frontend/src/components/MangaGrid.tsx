@@ -1,6 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+
+import { useCountUp } from '@/hooks/useCountUp';
 
 export type GridManga = {
   id: number;
@@ -24,16 +27,36 @@ export function MangaGrid({ items }: { items: GridManga[] }) {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-5 gap-y-8">
-      {items.map((manga) => (
-        <MangaCard key={manga.id} manga={manga} />
+      {items.map((manga, idx) => (
+        <MangaCard key={manga.id} manga={manga} index={idx} />
       ))}
     </div>
   );
 }
 
-export function MangaCard({ manga }: { manga: GridManga }) {
+export function MangaCard({
+  manga,
+  index = 0,
+}: {
+  manga: GridManga;
+  index?: number;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), Math.min(index * 28, 360));
+    return () => clearTimeout(t);
+  }, [index]);
+
   return (
-    <Link href={`/manga/${manga.id}`} className="group block corners-sm">
+    <Link
+      href={`/manga/${manga.id}`}
+      className="group block corners-sm card-shell"
+      style={{
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? 'translateY(0)' : 'translateY(8px)',
+        transition: 'opacity 320ms var(--ease-out), transform 320ms var(--ease-out)',
+      }}
+    >
       <div
         className="relative aspect-[2/3] overflow-hidden"
         style={{
@@ -57,6 +80,10 @@ export function MangaCard({ manga }: { manga: GridManga }) {
               'repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(255,255,255,0.04) 3px, rgba(255,255,255,0.04) 4px)',
           }}
         />
+        {/* flicker brackets */}
+        <span className="card-bracket card-bracket-tl" aria-hidden />
+        <span className="card-bracket card-bracket-br" aria-hidden />
+
         {/* status chip */}
         {manga.status && (
           <span
@@ -65,6 +92,7 @@ export function MangaCard({ manga }: { manga: GridManga }) {
               background: 'rgba(0,0,0,0.85)',
               border: '1px solid var(--border-faint)',
               color: 'var(--fg-secondary)',
+              zIndex: 4,
             }}
           >
             {manga.status}
@@ -77,9 +105,12 @@ export function MangaCard({ manga }: { manga: GridManga }) {
             background:
               'linear-gradient(to top, rgba(0,0,0,0.95), transparent)',
             color: 'var(--arasaka-red)',
+            zIndex: 4,
           }}
         >
-          // ENTRY_{String(manga.id).padStart(4, '0')}
+          <span className="card-id">
+            // ENTRY_{String(manga.id).padStart(4, '0')}
+          </span>
         </div>
       </div>
       <h3
@@ -115,6 +146,7 @@ export function Pager({
   page: number;
   onChange: (page: number) => void;
 }) {
+  const animatedCount = useCountUp(pagination?.count ?? 0);
   if (!pagination) return null;
   const hasPrev = Boolean(pagination.previous);
   const hasNext = Boolean(pagination.next);
@@ -151,7 +183,10 @@ export function Pager({
         style={{ color: 'var(--fg-muted)' }}
       >
         PG {String(page).padStart(2, '0')} ·{' '}
-        {pagination.count.toLocaleString('pt-BR')} ENTRADAS
+        <span className="tabular-nums" style={{ color: 'var(--fg-secondary)' }}>
+          {animatedCount.toLocaleString('pt-BR')}
+        </span>{' '}
+        ENTRADAS
       </span>
       <button
         disabled={!hasNext}

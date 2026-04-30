@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { API_URL, api, tokenStore } from '@/lib/api';
+import Loader from '@/components/Loader';
 
 type ReaderPage = {
   id: number | string;
@@ -263,11 +264,8 @@ export default function ReaderPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: 'var(--bg-void)' }}>
-        <div className="w-12 h-12 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--arasaka-red)', borderTopColor: 'transparent' }} />
-        <p className="mono text-xs uppercase tracking-[0.3em] animate-pulse" style={{ color: 'var(--arasaka-red)' }}>
-          // LOADING_STREAM...
-        </p>
+      <div className="min-h-screen" style={{ background: 'var(--bg-void)' }}>
+        <Loader fullscreen label="LOADING_STREAM" caption="// BUFFERING_PAGES" />
       </div>
     );
   }

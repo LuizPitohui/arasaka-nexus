@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 import { Toaster } from 'sonner';
 
+import BootSequence from '@/components/BootSequence';
+import CrtOverlay from '@/components/CrtOverlay';
 import { HeaderShell } from '@/components/HeaderShell';
+import RouteTransition from '@/components/RouteTransition';
+import StatusBar from '@/components/StatusBar';
 
 import './globals.css';
 
@@ -18,8 +22,12 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body suppressHydrationWarning={true}>
+        <BootSequence />
         <HeaderShell />
         {children}
+        <RouteTransition />
+        <StatusBar />
+        <CrtOverlay />
         <Toaster
           theme="dark"
           position="top-right"

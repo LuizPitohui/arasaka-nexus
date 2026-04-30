@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
-
 import { api } from '@/lib/api';
+import Loader from '@/components/Loader';
+import { useCountUp } from '@/hooks/useCountUp';
 import type { Genre } from '@/lib/types';
 
 export default function GenresPage() {
@@ -20,6 +20,7 @@ export default function GenresPage() {
   }, []);
 
   const totalEntries = genres.reduce((acc, g) => acc + g.manga_count, 0);
+  const animatedTotal = useCountUp(totalEntries);
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--bg-base)', color: 'var(--fg-primary)' }}>
@@ -30,7 +31,7 @@ export default function GenresPage() {
           meta={
             loading
               ? 'CARREGANDO...'
-              : `${genres.length} CATEGORIAS · ${totalEntries.toLocaleString('pt-BR')} ENTRADAS`
+              : `${genres.length} CATEGORIAS · ${animatedTotal.toLocaleString('pt-BR')} ENTRADAS`
           }
         />
 
@@ -112,7 +113,7 @@ function PageHeader({
       </p>
       <div className="flex items-baseline justify-between gap-4 mt-3 flex-wrap">
         <h1
-          className="text-4xl md:text-5xl font-black tracking-tight"
+          className="glitch-3 text-4xl md:text-5xl font-black tracking-tight"
           style={{ fontFamily: 'var(--font-display)' }}
         >
           {title}
@@ -130,8 +131,6 @@ function PageHeader({
 
 function Spinner() {
   return (
-    <div className="py-20 flex justify-center" style={{ color: 'var(--arasaka-red)' }}>
-      <Loader2 className="w-8 h-8 animate-spin" />
-    </div>
+    <Loader label="INDEXING_CLASSES" caption="// PARSING_TAXONOMY" />
   );
 }

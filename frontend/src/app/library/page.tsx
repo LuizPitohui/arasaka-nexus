@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 import {
   Bookmark,
   Heart,
-  Loader2,
   ListPlus,
   PlayCircle,
   Plus,
@@ -15,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
+import Loader from '@/components/Loader';
 
 type MangaSummary = {
   id: number;
@@ -131,11 +131,8 @@ export default function LibraryPage() {
 
   if (loading) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ background: 'var(--bg-base)', color: 'var(--arasaka-red)' }}
-      >
-        <Loader2 className="w-8 h-8 animate-spin" />
+      <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+        <Loader fullscreen label="OPENING_VAULT" caption="// DECRYPTING_PERSONAL_INDEX" />
       </div>
     );
   }
@@ -156,7 +153,7 @@ export default function LibraryPage() {
           </p>
           <div className="flex items-baseline justify-between gap-4 mt-3 flex-wrap">
             <h1
-              className="text-4xl md:text-5xl font-black tracking-tight"
+              className="glitch-3 text-4xl md:text-5xl font-black tracking-tight"
               style={{ fontFamily: 'var(--font-display)' }}
             >
               Biblioteca

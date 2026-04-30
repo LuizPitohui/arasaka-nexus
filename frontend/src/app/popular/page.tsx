@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
-
 import { api } from '@/lib/api';
+import Loader from '@/components/Loader';
+import { useCountUp } from '@/hooks/useCountUp';
 import type { MangaSummary, Paginated } from '@/lib/types';
 import { MangaGrid, Pager } from '@/components/MangaGrid';
 
@@ -11,6 +11,7 @@ export default function PopularPage() {
   const [data, setData] = useState<Paginated<MangaSummary> | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const animatedCount = useCountUp(data?.count ?? 0);
 
   useEffect(() => {
     setLoading(true);
@@ -36,7 +37,7 @@ export default function PopularPage() {
           </p>
           <div className="flex items-baseline justify-between gap-4 mt-3 flex-wrap">
             <h1
-              className="text-4xl md:text-5xl font-black tracking-tight"
+              className="glitch text-4xl md:text-5xl font-black tracking-tight"
               style={{ fontFamily: 'var(--font-display)' }}
             >
               Mais <span style={{ color: 'var(--arasaka-red)' }}>Populares</span>
@@ -46,7 +47,7 @@ export default function PopularPage() {
                 className="mono text-[11px] uppercase tracking-widest"
                 style={{ color: 'var(--arasaka-red)' }}
               >
-                RANK · {data.count.toLocaleString('pt-BR')} ENTRADAS
+                RANK · <span className="tabular-nums">{animatedCount.toLocaleString('pt-BR')}</span> ENTRADAS
               </p>
             )}
           </div>
@@ -59,9 +60,7 @@ export default function PopularPage() {
         </header>
 
         {loading ? (
-          <div className="py-20 flex justify-center" style={{ color: 'var(--arasaka-red)' }}>
-            <Loader2 className="w-8 h-8 animate-spin" />
-          </div>
+          <Loader label="FETCHING_TRENDING" caption="// CALCULATING_RANK_DELTA" />
         ) : (
           <>
             <MangaGrid items={data?.results ?? []} />

@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Loader2, Save, Shield } from 'lucide-react';
+import { Save, Shield } from 'lucide-react';
+
+import Loader from '@/components/Loader';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
 
@@ -76,11 +78,8 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ background: 'var(--bg-base)', color: 'var(--arasaka-red)' }}
-      >
-        <Loader2 className="w-8 h-8 animate-spin" />
+      <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+        <Loader fullscreen label="AUTHENTICATING" caption="// VERIFYING_CREDENTIALS" />
       </div>
     );
   }
@@ -144,7 +143,7 @@ export default function ProfilePage() {
                 ID_{agentId}
               </p>
               <h1
-                className="text-3xl md:text-4xl font-black tracking-tight mt-1"
+                className="glitch-2 text-3xl md:text-4xl font-black tracking-tight mt-1"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
                 {profile.username}

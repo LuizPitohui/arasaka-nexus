@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
-
 import { api } from '@/lib/api';
+import Loader from '@/components/Loader';
 import type { MangaSummary, Paginated } from '@/lib/types';
 import { MangaGrid, Pager } from '@/components/MangaGrid';
 
@@ -63,7 +62,7 @@ export default function LatestPage() {
           </div>
           <div className="flex items-baseline justify-between gap-4 mt-3 flex-wrap">
             <h1
-              className="text-4xl md:text-5xl font-black tracking-tight"
+              className="glitch text-4xl md:text-5xl font-black tracking-tight"
               style={{ fontFamily: 'var(--font-display)' }}
             >
               Últimos <span style={{ color: 'var(--arasaka-red)' }}>Lançamentos</span>
@@ -78,9 +77,7 @@ export default function LatestPage() {
         </header>
 
         {loading ? (
-          <div className="py-20 flex justify-center" style={{ color: 'var(--arasaka-red)' }}>
-            <Loader2 className="w-8 h-8 animate-spin" />
-          </div>
+          <Loader label="SYNCING_FEED" caption="// PULLING_LATEST_PACKETS" />
         ) : (
           <>
             <MangaGrid items={data?.results ?? []} />

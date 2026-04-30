@@ -2,9 +2,10 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 import { api } from '@/lib/api';
+import Loader from '@/components/Loader';
 import type { Genre, MangaSummary, Paginated } from '@/lib/types';
 import { MangaGrid, Pager } from '@/components/MangaGrid';
 
@@ -118,7 +119,7 @@ function BrowseInner() {
           </p>
           <div className="flex items-baseline justify-between gap-4 mt-3 flex-wrap">
             <h1
-              className="text-4xl md:text-5xl font-black tracking-tight"
+              className="glitch-2 text-4xl md:text-5xl font-black tracking-tight"
               style={{ fontFamily: 'var(--font-display)' }}
             >
               Catálogo
@@ -273,12 +274,7 @@ function BrowseInner() {
           {/* Results */}
           <section>
             {loading ? (
-              <div
-                className="py-20 flex justify-center"
-                style={{ color: 'var(--arasaka-red)' }}
-              >
-                <Loader2 className="w-8 h-8 animate-spin" />
-              </div>
+              <Loader label="RUNNING_QUERY" caption="// FETCHING_RESULTS" />
             ) : (
               <>
                 <MangaGrid items={data?.results ?? []} />
@@ -326,11 +322,8 @@ export default function BrowsePage() {
   return (
     <Suspense
       fallback={
-        <div
-          className="min-h-screen flex items-center justify-center"
-          style={{ background: 'var(--bg-base)', color: 'var(--arasaka-red)' }}
-        >
-          <Loader2 className="w-8 h-8 animate-spin" />
+        <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+          <Loader fullscreen label="INITIALIZING_QUERY" caption="// LOADING_FILTERS" />
         </div>
       }
     >
