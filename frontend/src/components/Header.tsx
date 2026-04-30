@@ -14,8 +14,8 @@ import {
   User,
 } from 'lucide-react';
 
-import Brand from '@/components/Brand';
 import { ApiError, api, auth, tokenStore } from '@/lib/api';
+import Brand from './Brand';
 
 type Me = { id: number; username: string; email: string; is_staff: boolean };
 
@@ -58,28 +58,47 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-black/95 backdrop-blur-md border-b border-zinc-900">
+    <header
+      className="sticky top-0 z-40 backdrop-blur-md"
+      style={{
+        background: 'rgba(0,0,0,0.92)',
+        borderBottom: '1px solid var(--border-faint)',
+      }}
+    >
+      {/* thin red rail */}
+      <div
+        style={{
+          height: 2,
+          background:
+            'linear-gradient(90deg, transparent, var(--arasaka-red) 20%, var(--arasaka-red) 80%, transparent)',
+          opacity: 0.6,
+        }}
+      />
       <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
-        <Link href="/" aria-label="Arasaka Nexus — Home">
-          <Brand size={20} />
+        <Link href="/">
+          <Brand size={18} />
         </Link>
 
-        <nav className="hidden md:flex items-center gap-5 text-[11px] uppercase tracking-widest text-zinc-400">
-          <NavLink href="/popular" current={pathname}>
-            <Flame className="w-3.5 h-3.5" /> Populares
+        <nav className="hidden md:flex items-center gap-1">
+          <NavLink href="/popular" current={pathname} icon={<Flame className="w-3 h-3" />}>
+            Populares
           </NavLink>
-          <NavLink href="/latest" current={pathname}>
-            <Clock className="w-3.5 h-3.5" /> Últimos
+          <NavLink href="/latest" current={pathname} icon={<Clock className="w-3 h-3" />}>
+            Últimos
           </NavLink>
-          <NavLink href="/genres" current={pathname}>
-            <Tag className="w-3.5 h-3.5" /> Gêneros
+          <NavLink href="/genres" current={pathname} icon={<Tag className="w-3 h-3" />}>
+            Gêneros
           </NavLink>
-          <NavLink href="/random" current={pathname}>
-            <Shuffle className="w-3.5 h-3.5" /> Random
+          <NavLink href="/random" current={pathname} icon={<Shuffle className="w-3 h-3" />}>
+            Random
           </NavLink>
           {authed && (
-            <NavLink href="/library" current={pathname}>
-              <Library className="w-3.5 h-3.5" /> Biblioteca
+            <NavLink
+              href="/library"
+              current={pathname}
+              icon={<Library className="w-3 h-3" />}
+            >
+              Biblioteca
             </NavLink>
           )}
         </nav>
@@ -89,15 +108,17 @@ export function Header() {
             <>
               <Link
                 href="/profile"
-                className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white"
+                className="flex items-center gap-2 mono text-[11px] uppercase tracking-widest"
+                style={{ color: 'var(--fg-secondary)' }}
                 title="Perfil"
               >
-                <User className="w-4 h-4" />
+                <User className="w-3.5 h-3.5" />
                 <span className="hidden md:inline">{me?.username ?? 'agent'}</span>
               </Link>
               <button
                 onClick={onLogout}
-                className="text-xs text-zinc-500 hover:text-red-500 flex items-center gap-1"
+                className="mono text-[11px] uppercase tracking-widest hover:text-[var(--arasaka-red)] transition-colors"
+                style={{ color: 'var(--fg-muted)' }}
                 title="Sair"
               >
                 <LogOut className="w-4 h-4" />
@@ -106,9 +127,10 @@ export function Header() {
           ) : (
             <Link
               href="/login"
-              className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white"
+              className="flex items-center gap-1.5 mono text-[11px] uppercase tracking-widest hover:text-white transition-colors"
+              style={{ color: 'var(--fg-secondary)' }}
             >
-              <LogIn className="w-4 h-4" /> Entrar
+              <LogIn className="w-3.5 h-3.5" /> Entrar
             </Link>
           )}
         </div>
@@ -120,21 +142,38 @@ export function Header() {
 function NavLink({
   href,
   current,
+  icon,
   children,
 }: {
   href: string;
   current: string;
+  icon: React.ReactNode;
   children: React.ReactNode;
 }) {
   const active = current === href;
   return (
     <Link
       href={href}
-      className={`flex items-center gap-1 transition-colors ${
-        active ? 'text-red-500' : 'hover:text-white'
-      }`}
+      className="flex items-center gap-1.5 px-3 py-1.5 mono text-[11px] uppercase tracking-[0.18em] transition-colors relative"
+      style={{
+        color: active ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+      }}
     >
+      {icon}
       {children}
+      {active && (
+        <span
+          style={{
+            position: 'absolute',
+            bottom: -1,
+            left: 8,
+            right: 8,
+            height: 1,
+            background: 'var(--arasaka-red)',
+            boxShadow: '0 0 8px var(--arasaka-red)',
+          }}
+        />
+      )}
     </Link>
   );
 }

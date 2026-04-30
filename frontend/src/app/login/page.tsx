@@ -19,26 +19,26 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setSubmitting(true);
-    const loadId = toast.loading('Verifying credentials...');
+    const loadId = toast.loading('// VERIFYING CREDENTIALS...');
 
     try {
       await auth.login(username, password);
       toast.dismiss(loadId);
-      toast.success('Access Granted. Welcome, Agent.', {
-        style: { borderColor: '#16a34a', color: '#fff' },
+      toast.success('// ACCESS GRANTED — WELCOME, AGENT.', {
+        style: { borderColor: 'var(--neon-green)', color: '#fff' },
       });
       router.push('/');
     } catch (err) {
       toast.dismiss(loadId);
       if (err instanceof ApiError && err.status === 401) {
-        setError('ACCESS DENIED: Invalid Credentials');
+        setError('ACCESS DENIED — INVALID CREDENTIALS');
       } else if (err instanceof ApiError) {
-        setError(`SYSTEM ERROR (${err.status})`);
+        setError(`SYSTEM ERROR — CODE ${err.status}`);
       } else {
-        setError('SYSTEM ERROR: Connection Failed');
+        setError('SYSTEM ERROR — CONNECTION FAILED');
       }
-      toast.error('Authentication Failed.', {
-        style: { borderColor: '#ef4444', color: '#fff' },
+      toast.error('// AUTHENTICATION FAILED.', {
+        style: { borderColor: 'var(--arasaka-red)', color: '#fff' },
       });
     } finally {
       setSubmitting(false);
@@ -46,81 +46,172 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-black flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-md border border-gray-800 bg-gray-900/50 p-8 shadow-2xl relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-red-600"></div>
+    <main
+      className="min-h-screen flex items-center justify-center p-4 scanlines"
+      style={{ background: 'var(--bg-void)' }}
+    >
+      {/* hex grid wash */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.03]"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 25% 25%, var(--arasaka-red) 1px, transparent 1px), radial-gradient(circle at 75% 75%, var(--neon-cyan) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
+        }}
+      />
 
-        <div className="text-center mb-10">
-          <div className="flex justify-center mb-4">
-            <ChevronMark size={56} />
+      <div
+        className="w-full max-w-md p-10 relative bracket"
+        style={{
+          background: 'var(--bg-terminal)',
+          border: '1px solid var(--border-faint)',
+          boxShadow: '0 0 80px rgba(220,38,38,0.08)',
+        }}
+      >
+        {/* status header bar */}
+        <div
+          className="absolute top-0 left-0 right-0 px-3 py-2 flex items-center justify-between mono text-[9px] uppercase tracking-widest"
+          style={{
+            background: 'var(--bg-elevated)',
+            borderBottom: '1px solid var(--arasaka-red)',
+            color: 'var(--fg-muted)',
+          }}
+        >
+          <span>// SECURE_TERMINAL</span>
+          <span style={{ color: 'var(--arasaka-red)' }}>
+            ● <span className="blink">CONN</span>
+          </span>
+        </div>
+
+        <div className="text-center mb-10 mt-6">
+          <div className="flex justify-center mb-6">
+            <ChevronMark size={64} />
           </div>
-          <h1 className="text-4xl font-extrabold text-white tracking-tighter">
-            ARASAKA <span className="text-red-600">NEXUS</span>
+          <h1
+            className="display text-[2.5rem]"
+            style={{ color: 'var(--fg-primary)' }}
+          >
+            ARASAKA <span style={{ color: 'var(--arasaka-red)' }}>NEXUS</span>
           </h1>
-          <p className="text-gray-500 text-xs uppercase tracking-[0.3em] mt-2">
-            Secure Access Terminal
+          <p className="kicker mt-3" style={{ color: 'var(--fg-muted)' }}>
+            // SECURE_ACCESS_TERMINAL
           </p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-              Agent ID
-            </label>
-            <input
-              type="text"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-black border border-gray-700 text-white p-3 focus:border-red-600 outline-none transition-colors"
-              placeholder="Enter your username"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-              Passcode
-            </label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-black border border-gray-700 text-white p-3 focus:border-red-600 outline-none transition-colors"
-              placeholder="••••••••"
-              required
-            />
-          </div>
+          <Field
+            label="// AGENT_ID"
+            type="text"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="enter your username"
+            required
+          />
+          <Field
+            label="// PASSCODE"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+          />
 
           {error && (
-            <div className="bg-red-900/20 border border-red-900 p-3 text-red-500 text-xs font-mono text-center">
-              ⚠️ {error}
+            <div
+              className="p-3 mono text-[11px] text-center uppercase tracking-widest"
+              style={{
+                background: 'rgba(220,38,38,0.08)',
+                border: '1px solid var(--arasaka-red)',
+                color: 'var(--arasaka-red)',
+              }}
+            >
+              ⚠ {error}
             </div>
           )}
 
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 uppercase tracking-widest transition-all"
+            className="w-full py-4 mono text-xs uppercase tracking-[0.3em] transition-all relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: 'var(--arasaka-red)',
+              color: '#fff',
+              fontWeight: 700,
+              boxShadow: submitting ? 'none' : 'var(--glow-red)',
+            }}
+            onMouseEnter={(e) => {
+              if (!submitting)
+                e.currentTarget.style.background = 'var(--arasaka-red-hover)';
+            }}
+            onMouseLeave={(e) => {
+              if (!submitting)
+                e.currentTarget.style.background = 'var(--arasaka-red)';
+            }}
           >
-            {submitting ? 'Authenticating...' : 'Authenticate'}
+            {submitting ? '// AUTHENTICATING...' : '>> AUTHENTICATE'}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-xs text-zinc-500">
-          Sem credenciais?{' '}
-          <Link href="/register" className="text-red-500 hover:text-red-400 underline">
-            Solicitar acesso
+        <div
+          className="mt-6 text-center mono text-[11px] uppercase tracking-widest"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          NO CREDENTIALS?{' '}
+          <Link
+            href="/register"
+            style={{ color: 'var(--arasaka-red)' }}
+            className="hover:underline"
+          >
+            REQUEST ACCESS
           </Link>
         </div>
 
-        <div className="mt-6 text-center">
-          <p className="text-gray-600 text-[10px] uppercase">
-            Unauthorized access is a felony punishable by data erasure.
-          </p>
+        <div
+          className="mt-6 pt-4 text-center mono text-[9px] uppercase tracking-widest"
+          style={{
+            color: 'var(--fg-faint)',
+            borderTop: '1px solid var(--border-faint)',
+          }}
+        >
+          // UNAUTHORIZED ACCESS IS A FELONY PUNISHABLE BY DATA ERASURE //
         </div>
       </div>
     </main>
+  );
+}
+
+type FieldProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+};
+
+function Field({ label, ...inputProps }: FieldProps) {
+  return (
+    <div>
+      <label
+        className="block kicker mb-2"
+        style={{ color: 'var(--fg-muted)' }}
+      >
+        {label}
+      </label>
+      <input
+        {...inputProps}
+        className="w-full p-3 mono text-sm outline-none transition-colors"
+        style={{
+          background: 'var(--bg-void)',
+          border: '1px solid var(--border-mid)',
+          color: 'var(--fg-primary)',
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+          e.currentTarget.style.boxShadow = '0 0 0 1px var(--arasaka-red), var(--glow-red)';
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = 'var(--border-mid)';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      />
+    </div>
   );
 }

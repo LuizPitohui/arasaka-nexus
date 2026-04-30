@@ -1,6 +1,5 @@
 /* ============================================================
    Arasaka Nexus — globals.css
-   Replaces frontend/src/app/globals.css
    ============================================================ */
 
 @import "tailwindcss";
@@ -42,12 +41,11 @@
   --font-mono:    'JetBrains Mono', ui-monospace, monospace;
   --font-body:    'Inter', system-ui, -apple-system, sans-serif;
 
-  /* glow shadows (no soft drops) */
+  /* glow */
   --glow-red:        0 0 24px rgba(220,38,38,0.25), 0 0 4px rgba(220,38,38,0.5);
   --glow-red-strong: 0 0 48px rgba(220,38,38,0.45), 0 0 8px rgba(239,68,68,0.7);
   --glow-cyan:       0 0 24px rgba(34,211,238,0.25);
 
-  /* legacy compat for tailwind theme inline */
   --background: var(--bg-void);
   --foreground: var(--fg-primary);
 }
@@ -70,13 +68,36 @@ html, body {
 /* scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg-terminal); }
-::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 0; }
 ::-webkit-scrollbar-thumb:hover { background: var(--arasaka-red); }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { scrollbar-width: none; }
 
 /* focus */
 :focus-visible { outline: 2px solid var(--arasaka-red); outline-offset: 2px; }
 
-/* glitch keyframes — burst not loop */
+/* type primitives — use as className="kicker" / className="display" */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--arasaka-red);
+}
+.kicker-muted { color: var(--fg-muted); }
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.mono { font-family: var(--font-mono); }
+
+/* glitch keyframes — burst, not loop */
 @keyframes glitch-burst {
   0%, 88%, 100% { transform: none; text-shadow: none; }
   90% { transform: translate(-2px, 0); text-shadow: -2px 0 var(--neon-cyan), 2px 0 var(--neon-magenta); }
@@ -88,14 +109,47 @@ html, body {
 @keyframes blink-cursor { 50% { opacity: 0; } }
 .blink { animation: blink-cursor 1s steps(1) infinite; }
 
+/* scanline overlay */
+.scanlines {
+  position: relative;
+  isolation: isolate;
+}
+.scanlines::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 3px,
+    rgba(255,255,255,0.02) 3px,
+    rgba(255,255,255,0.02) 4px
+  );
+  z-index: 1;
+}
+
 /* bracket corners — for focused inputs and active selections */
 .bracket { position: relative; }
 .bracket::before, .bracket::after {
   content: ""; position: absolute; width: 14px; height: 14px;
   border: 2px solid var(--arasaka-red);
+  pointer-events: none;
 }
 .bracket::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
 .bracket::after  { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
+
+/* slim corners — same idea, smaller, for cards */
+.corners-sm { position: relative; }
+.corners-sm::before, .corners-sm::after {
+  content: ""; position: absolute; width: 8px; height: 8px;
+  border: 1px solid var(--arasaka-red);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.corners-sm::before { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.corners-sm::after  { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+.corners-sm:hover::before, .corners-sm:hover::after { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

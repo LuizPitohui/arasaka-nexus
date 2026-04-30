@@ -28,44 +28,32 @@ type ReaderData = {
   chapter_number: string;
   title: string;
   pages: ReaderPage[];
-  navigation: {
-    prev: number | null;
-    next: number | null;
-  };
+  navigation: { prev: number | null; next: number | null };
 };
 
 type ReaderMode = 'vertical' | 'paged' | 'webtoon' | 'double';
 type FitMode = 'width' | 'height' | 'both' | 'original';
 
 const READER_MODES: { value: ReaderMode; label: string }[] = [
-  { value: 'vertical', label: 'Vertical' },
-  { value: 'paged', label: 'Paginado' },
-  { value: 'webtoon', label: 'Webtoon' },
-  { value: 'double', label: 'Página dupla' },
+  { value: 'vertical', label: 'VERT' },
+  { value: 'paged', label: 'PAGED' },
+  { value: 'webtoon', label: 'WEBTOON' },
+  { value: 'double', label: 'DOUBLE' },
 ];
 
 const FIT_MODES: { value: FitMode; label: string }[] = [
-  { value: 'width', label: 'Largura' },
-  { value: 'height', label: 'Altura' },
-  { value: 'both', label: 'Tela' },
-  { value: 'original', label: 'Original' },
+  { value: 'width', label: 'W' },
+  { value: 'height', label: 'H' },
+  { value: 'both', label: 'FIT' },
+  { value: 'original', label: '1:1' },
 ];
 
 const STORAGE_KEY = 'nexus_reader_prefs';
-
-type Prefs = {
-  mode: ReaderMode;
-  fit: FitMode;
-};
-
+type Prefs = { mode: ReaderMode; fit: FitMode };
 const DEFAULT_PREFS: Prefs = { mode: 'vertical', fit: 'width' };
 
 const apiOrigin = (() => {
-  try {
-    return new URL(API_URL).origin;
-  } catch {
-    return 'http://localhost:8000';
-  }
+  try { return new URL(API_URL).origin; } catch { return 'http://localhost:8000'; }
 })();
 
 function resolvePageUrl(path: string): string {
@@ -108,67 +96,47 @@ export default function ReaderPage() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load prefs from localStorage + profile (if authed)
   useEffect(() => {
     const local = loadPrefs();
     setPrefs(local);
     if (tokenStore.getAccess()) {
-      api
-        .get<{ reader_mode: ReaderMode }>('/accounts/profile/')
-        .then((profile) => {
-          setPrefs((prev) => {
-            // Profile preference wins on first load only (don't override mid-session)
-            const merged = { ...prev, mode: profile.reader_mode ?? prev.mode };
-            savePrefs(merged);
-            return merged;
-          });
-        })
-        .catch(() => {});
+      api.get<{ reader_mode: ReaderMode }>('/accounts/profile/').then((p) => {
+        setPrefs((prev) => {
+          const merged = { ...prev, mode: p.reader_mode ?? prev.mode };
+          savePrefs(merged);
+          return merged;
+        });
+      }).catch(() => {});
     }
   }, []);
 
-  // Fetch chapter
   useEffect(() => {
     if (!params?.chapterId) return;
     let cancelled = false;
     setLoading(true);
     setPageIndex(0);
-    api
-      .get<ReaderData>(`/read/${params.chapterId}/`, { auth: false })
-      .then((readerData) => {
-        if (cancelled) return;
-        setData(readerData);
-        window.scrollTo(0, 0);
-      })
+    api.get<ReaderData>(`/read/${params.chapterId}/`, { auth: false })
+      .then((d) => { if (!cancelled) { setData(d); window.scrollTo(0, 0); } })
       .catch((err) => console.error(err))
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [params?.chapterId]);
 
-  // Fullscreen state listener
   useEffect(() => {
     const handler = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', handler);
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
-  // Track reading progress (open + complete)
   useEffect(() => {
     if (!params?.chapterId || !tokenStore.getAccess()) return;
-    api
-      .post('/accounts/progress/', {
-        chapter: Number(params.chapterId),
-        page_number: 0,
-        completed: false,
-      })
-      .catch(() => {});
+    api.post('/accounts/progress/', {
+      chapter: Number(params.chapterId),
+      page_number: 0,
+      completed: false,
+    }).catch(() => {});
   }, [params?.chapterId]);
 
-  // Vertical/webtoon: track scroll for completion + progress bar
   useEffect(() => {
     if (!data || prefs.mode === 'paged' || prefs.mode === 'double') return;
     let marked = false;
@@ -178,13 +146,11 @@ export default function ReaderPage() {
       setScrollProgress(pct);
       if (!marked && pct >= 95 && tokenStore.getAccess() && params?.chapterId) {
         marked = true;
-        api
-          .post('/accounts/progress/', {
-            chapter: Number(params.chapterId),
-            page_number: data.pages.length,
-            completed: true,
-          })
-          .catch(() => {});
+        api.post('/accounts/progress/', {
+          chapter: Number(params.chapterId),
+          page_number: data.pages.length,
+          completed: true,
+        }).catch(() => {});
       }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -192,22 +158,18 @@ export default function ReaderPage() {
     return () => window.removeEventListener('scroll', onScroll);
   }, [data, prefs.mode, params?.chapterId]);
 
-  // Paged/double: track current page for completion
   useEffect(() => {
     if (!data || (prefs.mode !== 'paged' && prefs.mode !== 'double')) return;
     if (!tokenStore.getAccess() || !params?.chapterId) return;
-    const isLastPage =
-      prefs.mode === 'double'
-        ? pageIndex + 2 >= data.pages.length
-        : pageIndex >= data.pages.length - 1;
+    const isLastPage = prefs.mode === 'double'
+      ? pageIndex + 2 >= data.pages.length
+      : pageIndex >= data.pages.length - 1;
     if (isLastPage && pageIndex > 0) {
-      api
-        .post('/accounts/progress/', {
-          chapter: Number(params.chapterId),
-          page_number: pageIndex + 1,
-          completed: true,
-        })
-        .catch(() => {});
+      api.post('/accounts/progress/', {
+        chapter: Number(params.chapterId),
+        page_number: pageIndex + 1,
+        completed: true,
+      }).catch(() => {});
     }
   }, [pageIndex, prefs.mode, data, params?.chapterId]);
 
@@ -215,11 +177,8 @@ export default function ReaderPage() {
     setPrefs((prev) => {
       const next = { ...prev, ...patch };
       savePrefs(next);
-      // Persist mode preference to profile if authenticated
       if (patch.mode && tokenStore.getAccess()) {
-        api
-          .patch('/accounts/profile/', { reader_mode: patch.mode })
-          .catch(() => {});
+        api.patch('/accounts/profile/', { reader_mode: patch.mode }).catch(() => {});
       }
       return next;
     });
@@ -255,7 +214,6 @@ export default function ReaderPage() {
     }
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     if (!data) return;
     const onKey = (e: KeyboardEvent) => {
@@ -263,166 +221,151 @@ export default function ReaderPage() {
       switch (e.key) {
         case 'ArrowRight':
         case 'd':
-          if (prefs.mode === 'paged' || prefs.mode === 'double') {
-            e.preventDefault();
-            goNextPage();
-          } else if (data.navigation.next) {
-            router.push(`/read/${data.navigation.next}`);
-          }
+          if (prefs.mode === 'paged' || prefs.mode === 'double') { e.preventDefault(); goNextPage(); }
+          else if (data.navigation.next) router.push(`/read/${data.navigation.next}`);
           break;
         case 'ArrowLeft':
         case 'a':
-          if (prefs.mode === 'paged' || prefs.mode === 'double') {
-            e.preventDefault();
-            goPrevPage();
-          } else if (data.navigation.prev) {
-            router.push(`/read/${data.navigation.prev}`);
-          }
+          if (prefs.mode === 'paged' || prefs.mode === 'double') { e.preventDefault(); goPrevPage(); }
+          else if (data.navigation.prev) router.push(`/read/${data.navigation.prev}`);
           break;
-        case 'f':
-        case 'F':
-          e.preventDefault();
-          toggleFullscreen();
-          break;
-        case 'm':
-        case 'M':
-          e.preventDefault();
-          {
-            const idx = READER_MODES.findIndex((m) => m.value === prefs.mode);
-            const nextMode = READER_MODES[(idx + 1) % READER_MODES.length].value;
-            updatePrefs({ mode: nextMode });
-          }
-          break;
-        case 'Escape':
-          setShowSettings(false);
-          break;
+        case 'f': case 'F': e.preventDefault(); toggleFullscreen(); break;
+        case 'm': case 'M': e.preventDefault(); {
+          const idx = READER_MODES.findIndex((m) => m.value === prefs.mode);
+          const nextMode = READER_MODES[(idx + 1) % READER_MODES.length].value;
+          updatePrefs({ mode: nextMode });
+        } break;
+        case 'Escape': setShowSettings(false); break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [data, prefs.mode, goNextPage, goPrevPage, toggleFullscreen, updatePrefs, router]);
 
-  // Preload neighbouring images in paged/double mode
   useEffect(() => {
     if (!data) return;
     if (prefs.mode !== 'paged' && prefs.mode !== 'double') return;
-    const indicesToPreload =
-      prefs.mode === 'double'
-        ? [pageIndex + 2, pageIndex + 3, pageIndex - 1, pageIndex - 2]
-        : [pageIndex + 1, pageIndex + 2, pageIndex - 1];
-    indicesToPreload
-      .filter((i) => i >= 0 && i < data.pages.length)
-      .forEach((i) => {
-        const img = new Image();
-        img.src = resolvePageUrl(data.pages[i].image);
-      });
+    const indices = prefs.mode === 'double'
+      ? [pageIndex + 2, pageIndex + 3, pageIndex - 1, pageIndex - 2]
+      : [pageIndex + 1, pageIndex + 2, pageIndex - 1];
+    indices.filter((i) => i >= 0 && i < data.pages.length).forEach((i) => {
+      const img = new Image();
+      img.src = resolvePageUrl(data.pages[i].image);
+    });
   }, [data, pageIndex, prefs.mode]);
 
-  const fitClasses: Record<FitMode, string> = useMemo(
-    () => ({
-      width: 'w-full h-auto',
-      height: 'h-screen w-auto',
-      both: 'max-h-screen max-w-full w-auto h-auto',
-      original: 'w-auto h-auto',
-    }),
-    [],
-  );
+  const fitClasses: Record<FitMode, string> = useMemo(() => ({
+    width: 'w-full h-auto',
+    height: 'h-screen w-auto',
+    both: 'max-h-screen max-w-full w-auto h-auto',
+    original: 'w-auto h-auto',
+  }), []);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4">
-        <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-red-600 font-mono text-sm animate-pulse">CARREGANDO STREAM...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: 'var(--bg-void)' }}>
+        <div className="w-12 h-12 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--arasaka-red)', borderTopColor: 'transparent' }} />
+        <p className="mono text-xs uppercase tracking-[0.3em] animate-pulse" style={{ color: 'var(--arasaka-red)' }}>
+          // LOADING_STREAM...
+        </p>
       </div>
     );
   }
   if (!data) return null;
 
   const totalPages = data.pages.length;
-  const displayPage =
-    prefs.mode === 'double'
-      ? Math.min(pageIndex + 1, totalPages)
-      : prefs.mode === 'paged'
-      ? pageIndex + 1
-      : Math.round((scrollProgress / 100) * totalPages) || 1;
+  const displayPage = prefs.mode === 'double'
+    ? Math.min(pageIndex + 1, totalPages)
+    : prefs.mode === 'paged'
+    ? pageIndex + 1
+    : Math.round((scrollProgress / 100) * totalPages) || 1;
 
-  const pagedProgress =
-    prefs.mode === 'paged' || prefs.mode === 'double'
-      ? totalPages > 0
-        ? ((pageIndex + (prefs.mode === 'double' ? 2 : 1)) / totalPages) * 100
-        : 0
-      : scrollProgress;
+  const pagedProgress = (prefs.mode === 'paged' || prefs.mode === 'double')
+    ? totalPages > 0 ? ((pageIndex + (prefs.mode === 'double' ? 2 : 1)) / totalPages) * 100 : 0
+    : scrollProgress;
 
   return (
-    <main className="min-h-screen bg-black text-zinc-100 flex flex-col items-center" ref={containerRef}>
-      {/* HEADER */}
-      <header className="fixed top-0 left-0 w-full bg-zinc-900/95 backdrop-blur-md border-b border-zinc-800 h-14 z-50 flex justify-between items-center px-4 shadow-2xl">
+    <main className="min-h-screen flex flex-col items-center" style={{ background: 'var(--bg-void)', color: 'var(--fg-primary)' }} ref={containerRef}>
+      {/* HUD HEADER */}
+      <header
+        className="fixed top-0 left-0 w-full backdrop-blur-md h-14 z-50 flex justify-between items-center px-4"
+        style={{
+          background: 'rgba(10,10,10,0.95)',
+          borderBottom: '1px solid var(--border-faint)',
+        }}
+      >
         <div className="flex items-center gap-4 min-w-0">
           <button
             onClick={() => router.push(`/manga/${data.manga_id}`)}
-            className="hover:text-red-500 transition-colors flex-shrink-0"
-            title="Voltar para a Obra"
+            className="flex-shrink-0 transition-colors hover:text-[var(--arasaka-red)]"
+            style={{ color: 'var(--fg-secondary)' }}
+            title="Back to entry"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex flex-col min-w-0">
-            <h1 className="text-xs font-bold text-white max-w-[120px] md:max-w-md truncate">
+            <h1 className="text-xs font-bold max-w-[120px] md:max-w-md truncate" style={{ color: 'var(--fg-primary)' }}>
               {data.manga_title}
             </h1>
-            <p className="text-[10px] text-zinc-400">
-              Capítulo {data.chapter_number} · {displayPage}/{totalPages}
+            <p className="mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--fg-muted)' }}>
+              // CH_{data.chapter_number} · PG_{String(displayPage).padStart(3, '0')}/{String(totalPages).padStart(3, '0')}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-1">
-          <button
+          <HUDButton
+            active={showSettings}
             onClick={() => setShowSettings((v) => !v)}
-            className={`p-2 rounded-full transition-colors ${
-              showSettings ? 'bg-red-950/30 text-red-500' : 'hover:bg-zinc-800 text-zinc-400'
-            }`}
-            title="Configurações (M para ciclar modo)"
+            title="Settings (M cycles mode)"
           >
             <Settings className="w-4 h-4" />
-          </button>
-          <button
-            onClick={toggleFullscreen}
-            className="p-2 hover:bg-zinc-800 rounded-full transition-colors text-zinc-400"
-            title="Tela cheia (F)"
-          >
+          </HUDButton>
+          <HUDButton onClick={toggleFullscreen} title="Fullscreen (F)">
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={() => router.push('/')}
-            className="p-2 hover:bg-zinc-800 rounded-full transition-colors text-zinc-400"
-            title="Home"
-          >
+          </HUDButton>
+          <HUDButton onClick={() => router.push('/')} title="Home">
             <Home className="w-4 h-4" />
-          </button>
+          </HUDButton>
         </div>
 
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 h-0.5 bg-red-600 transition-all" style={{ width: `${pagedProgress}%` }} />
+        {/* progress bar */}
+        <div
+          className="absolute bottom-0 left-0 h-[2px] transition-all"
+          style={{
+            width: `${pagedProgress}%`,
+            background: 'var(--arasaka-red)',
+            boxShadow: '0 0 8px var(--arasaka-red)',
+          }}
+        />
       </header>
 
       {/* SETTINGS PANEL */}
       {showSettings && (
         <div
-          className="fixed top-14 right-2 z-50 w-72 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl p-4 space-y-4"
+          className="fixed top-16 right-2 z-50 w-72 p-4 space-y-4 bracket"
+          style={{
+            background: 'var(--bg-terminal)',
+            border: '1px solid var(--border-faint)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          }}
           onClick={(e) => e.stopPropagation()}
         >
+          <p className="kicker">// READER_CONFIG</p>
+
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Modo</p>
+            <p className="mono text-[10px] uppercase tracking-widest mb-2" style={{ color: 'var(--fg-muted)' }}>MODE</p>
             <div className="grid grid-cols-2 gap-1">
               {READER_MODES.map((m) => (
                 <button
                   key={m.value}
                   onClick={() => updatePrefs({ mode: m.value })}
-                  className={`px-2 py-1.5 text-[11px] uppercase tracking-widest border transition ${
-                    prefs.mode === m.value
-                      ? 'border-red-600 bg-red-950/30 text-red-500'
-                      : 'border-zinc-800 text-zinc-400 hover:border-zinc-600'
-                  }`}
+                  className="px-2 py-1.5 mono text-[10px] uppercase tracking-widest transition"
+                  style={{
+                    border: prefs.mode === m.value ? '1px solid var(--arasaka-red)' : '1px solid var(--border-faint)',
+                    background: prefs.mode === m.value ? 'rgba(220,38,38,0.08)' : 'transparent',
+                    color: prefs.mode === m.value ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+                  }}
                 >
                   {m.label}
                 </button>
@@ -431,17 +374,18 @@ export default function ReaderPage() {
           </div>
 
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Encaixe</p>
+            <p className="mono text-[10px] uppercase tracking-widest mb-2" style={{ color: 'var(--fg-muted)' }}>FIT</p>
             <div className="grid grid-cols-4 gap-1">
               {FIT_MODES.map((f) => (
                 <button
                   key={f.value}
                   onClick={() => updatePrefs({ fit: f.value })}
-                  className={`px-2 py-1.5 text-[10px] uppercase tracking-widest border transition ${
-                    prefs.fit === f.value
-                      ? 'border-red-600 bg-red-950/30 text-red-500'
-                      : 'border-zinc-800 text-zinc-400 hover:border-zinc-600'
-                  }`}
+                  className="px-2 py-1.5 mono text-[10px] uppercase tracking-widest transition"
+                  style={{
+                    border: prefs.fit === f.value ? '1px solid var(--arasaka-red)' : '1px solid var(--border-faint)',
+                    background: prefs.fit === f.value ? 'rgba(220,38,38,0.08)' : 'transparent',
+                    color: prefs.fit === f.value ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+                  }}
                 >
                   {f.label}
                 </button>
@@ -449,24 +393,24 @@ export default function ReaderPage() {
             </div>
           </div>
 
-          <div className="text-[10px] text-zinc-600 leading-relaxed border-t border-zinc-900 pt-3">
-            <p className="font-bold text-zinc-500 mb-1">Atalhos</p>
-            <p>← → ou A / D · navegar</p>
-            <p>F · tela cheia · M · ciclar modo</p>
-            <p>Esc · fechar este painel</p>
+          <div className="mono text-[10px] uppercase tracking-widest leading-relaxed pt-3" style={{ color: 'var(--fg-muted)', borderTop: '1px solid var(--border-faint)' }}>
+            <p style={{ color: 'var(--fg-secondary)', fontWeight: 700 }} className="mb-1.5">// SHORTCUTS</p>
+            <p>← → / A D · NAV</p>
+            <p>F · FULLSCREEN · M · CYCLE_MODE</p>
+            <p>ESC · CLOSE_PANEL</p>
           </div>
         </div>
       )}
 
       {/* CONTENT */}
-      <div className="mt-14 w-full flex flex-col items-center bg-black">
+      <div className="mt-14 w-full flex flex-col items-center" style={{ background: 'var(--bg-void)' }}>
         {prefs.mode === 'vertical' && (
           <div className="w-full md:max-w-3xl flex flex-col">
             {data.pages.map((page, index) => (
               <div key={index} className="leading-[0] w-full">
                 <img
                   src={resolvePageUrl(page.image)}
-                  alt={`Página ${index + 1}`}
+                  alt={`Page ${index + 1}`}
                   className={`block select-none mx-auto ${fitClasses[prefs.fit]}`}
                   loading={index < 3 ? 'eager' : 'lazy'}
                 />
@@ -481,7 +425,7 @@ export default function ReaderPage() {
               <div key={index} className="leading-[0] w-full">
                 <img
                   src={resolvePageUrl(page.image)}
-                  alt={`Página ${index + 1}`}
+                  alt={`Page ${index + 1}`}
                   className="block w-full h-auto select-none"
                   loading={index < 3 ? 'eager' : 'lazy'}
                 />
@@ -491,48 +435,50 @@ export default function ReaderPage() {
         )}
 
         {prefs.mode === 'paged' && (
-          <PagedView
-            page={data.pages[pageIndex]}
-            fitClass={fitClasses[prefs.fit]}
-            onPrev={goPrevPage}
-            onNext={goNextPage}
-          />
+          <PagedView page={data.pages[pageIndex]} fitClass={fitClasses[prefs.fit]} onPrev={goPrevPage} onNext={goNextPage} />
         )}
 
         {prefs.mode === 'double' && (
-          <DoubleView
-            left={data.pages[pageIndex]}
-            right={data.pages[pageIndex + 1]}
-            onPrev={goPrevPage}
-            onNext={goNextPage}
-          />
+          <DoubleView left={data.pages[pageIndex]} right={data.pages[pageIndex + 1]} onPrev={goPrevPage} onNext={goNextPage} />
         )}
       </div>
 
-      {/* FOOTER NAV — only on continuous modes */}
+      {/* FOOTER NAV */}
       {(prefs.mode === 'vertical' || prefs.mode === 'webtoon') && (
-        <div className="w-full max-w-3xl p-8 pb-24 space-y-6 bg-black text-center">
-          <p className="text-zinc-600 text-xs uppercase tracking-widest font-mono">Fim do Capítulo</p>
+        <div className="w-full max-w-3xl p-8 pb-24 space-y-6 text-center" style={{ background: 'var(--bg-void)' }}>
+          <p className="mono text-[11px] uppercase tracking-[0.3em]" style={{ color: 'var(--fg-muted)' }}>
+            // END_OF_STREAM
+          </p>
           <div className="grid grid-cols-2 gap-4">
             {data.navigation.prev ? (
               <Link
                 href={`/read/${data.navigation.prev}`}
-                className="flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 py-4 rounded hover:border-red-600 hover:text-red-500 transition-all"
+                className="flex items-center justify-center gap-2 py-4 mono text-xs uppercase tracking-widest transition-all"
+                style={{ background: 'var(--bg-terminal)', border: '1px solid var(--border-faint)', color: 'var(--fg-secondary)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--arasaka-red)'; e.currentTarget.style.color = 'var(--arasaka-red)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-faint)'; e.currentTarget.style.color = 'var(--fg-secondary)'; }}
               >
-                <ChevronLeft className="w-4 h-4" /> Anterior
+                <ChevronLeft className="w-4 h-4" /> PREV_CH
               </Link>
             ) : (
-              <div className="opacity-30 border border-zinc-900 py-4 rounded cursor-not-allowed">Início</div>
+              <div className="opacity-30 py-4 mono text-xs uppercase tracking-widest cursor-not-allowed" style={{ border: '1px solid var(--border-faint)' }}>
+                START
+              </div>
             )}
             {data.navigation.next ? (
               <Link
                 href={`/read/${data.navigation.next}`}
-                className="flex items-center justify-center gap-2 bg-red-900/20 border border-red-900/50 text-red-500 py-4 rounded hover:bg-red-600 hover:text-white hover:border-red-600 transition-all font-bold"
+                className="flex items-center justify-center gap-2 py-4 mono text-xs uppercase tracking-[0.18em] font-bold transition-all"
+                style={{ background: 'var(--arasaka-red)', color: '#fff', boxShadow: 'var(--glow-red)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--arasaka-red-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--arasaka-red)'; }}
               >
-                Próximo <ChevronRight className="w-4 h-4" />
+                NEXT_CH <ChevronRight className="w-4 h-4" />
               </Link>
             ) : (
-              <div className="opacity-30 border border-zinc-900 py-4 rounded cursor-not-allowed">Atual</div>
+              <div className="opacity-30 py-4 mono text-xs uppercase tracking-widest cursor-not-allowed" style={{ border: '1px solid var(--border-faint)' }}>
+                LATEST
+              </div>
             )}
           </div>
         </div>
@@ -541,77 +487,53 @@ export default function ReaderPage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sub-views
-// ---------------------------------------------------------------------------
-function PagedView({
-  page,
-  fitClass,
-  onPrev,
-  onNext,
+function HUDButton({
+  children, onClick, active, title,
 }: {
-  page: ReaderPage | undefined;
-  fitClass: string;
-  onPrev: () => void;
-  onNext: () => void;
+  children: React.ReactNode;
+  onClick: () => void;
+  active?: boolean;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="p-2 transition-colors"
+      style={{
+        background: active ? 'rgba(220,38,38,0.12)' : 'transparent',
+        color: active ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+        border: active ? '1px solid var(--arasaka-red)' : '1px solid transparent',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PagedView({ page, fitClass, onPrev, onNext }: {
+  page: ReaderPage | undefined; fitClass: string; onPrev: () => void; onNext: () => void;
 }) {
   if (!page) return null;
   return (
-    <div
-      className="relative w-full flex items-center justify-center bg-black select-none"
-      style={{ minHeight: 'calc(100vh - 3.5rem)' }}
-    >
-      {/* Click hotzones */}
-      <button
-        onClick={onPrev}
-        className="absolute left-0 top-0 bottom-0 w-1/3 z-10 cursor-w-resize"
-        aria-label="Página anterior"
-      />
-      <button
-        onClick={onNext}
-        className="absolute right-0 top-0 bottom-0 w-1/3 z-10 cursor-e-resize"
-        aria-label="Próxima página"
-      />
-      <img
-        src={resolvePageUrl(page.image)}
-        alt={`Página ${page.order + 1}`}
-        className={`mx-auto block ${fitClass}`}
-      />
+    <div className="relative w-full flex items-center justify-center select-none" style={{ minHeight: 'calc(100vh - 3.5rem)', background: 'var(--bg-void)' }}>
+      <button onClick={onPrev} className="absolute left-0 top-0 bottom-0 w-1/3 z-10 cursor-w-resize" aria-label="Previous page" />
+      <button onClick={onNext} className="absolute right-0 top-0 bottom-0 w-1/3 z-10 cursor-e-resize" aria-label="Next page" />
+      <img src={resolvePageUrl(page.image)} alt={`Page ${page.order + 1}`} className={`mx-auto block ${fitClass}`} />
     </div>
   );
 }
 
-function DoubleView({
-  left,
-  right,
-  onPrev,
-  onNext,
-}: {
-  left: ReaderPage | undefined;
-  right: ReaderPage | undefined;
-  onPrev: () => void;
-  onNext: () => void;
+function DoubleView({ left, right, onPrev, onNext }: {
+  left: ReaderPage | undefined; right: ReaderPage | undefined; onPrev: () => void; onNext: () => void;
 }) {
   if (!left) return null;
   return (
-    <div
-      className="relative w-full flex items-center justify-center gap-1 bg-black select-none"
-      style={{ minHeight: 'calc(100vh - 3.5rem)' }}
-    >
+    <div className="relative w-full flex items-center justify-center gap-1 select-none" style={{ minHeight: 'calc(100vh - 3.5rem)', background: 'var(--bg-void)' }}>
       <button onClick={onPrev} className="absolute left-0 top-0 bottom-0 w-1/4 z-10 cursor-w-resize" />
       <button onClick={onNext} className="absolute right-0 top-0 bottom-0 w-1/4 z-10 cursor-e-resize" />
-      <img
-        src={resolvePageUrl(left.image)}
-        alt={`Página ${left.order + 1}`}
-        className="max-h-screen w-auto h-auto"
-      />
-      {right && (
-        <img
-          src={resolvePageUrl(right.image)}
-          alt={`Página ${right.order + 1}`}
-          className="max-h-screen w-auto h-auto"
-        />
-      )}
+      <img src={resolvePageUrl(left.image)} alt={`Page ${left.order + 1}`} className="max-h-screen w-auto h-auto" />
+      {right && (<img src={resolvePageUrl(right.image)} alt={`Page ${right.order + 1}`} className="max-h-screen w-auto h-auto" />)}
     </div>
   );
 }

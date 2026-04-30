@@ -1,26 +1,23 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 
 import { HeaderShell } from '@/components/HeaderShell';
 
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
-
 export const metadata: Metadata = {
   title: 'Arasaka Nexus — Manga Library',
-  description: 'Biblioteca digital de mangás com leitor integrado e estética cyberpunk.',
+  description:
+    'Biblioteca digital de mangás com leitor integrado e estética cyberpunk.',
+  icons: { icon: '/arasaka-mark.svg' },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body className={inter.className} suppressHydrationWarning={true}>
+      <body suppressHydrationWarning={true}>
         <HeaderShell />
         {children}
         <Toaster
@@ -28,9 +25,13 @@ export default function RootLayout({
           position="top-right"
           toastOptions={{
             style: {
-              background: '#000',
-              border: '1px solid #333',
-              color: '#fff',
+              background: 'var(--bg-terminal)',
+              border: '1px solid var(--border-faint)',
+              color: 'var(--fg-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12px',
+              borderRadius: 0,
+              letterSpacing: '0.02em',
             },
           }}
         />

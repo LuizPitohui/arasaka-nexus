@@ -12,22 +12,30 @@ export default function RandomPage() {
   useEffect(() => {
     api
       .get<{ id: number }>('/mangas/random/', { auth: false })
-      .then((manga) => {
-        router.replace(`/manga/${manga.id}`);
-      })
-      .catch(() => {
-        router.replace('/');
-      });
+      .then((manga) => router.replace(`/manga/${manga.id}`))
+      .catch(() => router.replace('/'));
   }, [router]);
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-black text-zinc-300 gap-4">
+    <main
+      className="min-h-screen flex flex-col items-center justify-center gap-6"
+      style={{ background: 'var(--bg-void)', color: 'var(--fg-primary)' }}
+    >
       <div className="relative">
-        <Shuffle className="w-12 h-12 text-red-500" />
-        <Loader2 className="w-12 h-12 absolute inset-0 animate-spin text-red-600 opacity-30" />
+        <Shuffle
+          className="w-14 h-14"
+          style={{ color: 'var(--arasaka-red)' }}
+        />
+        <Loader2
+          className="w-14 h-14 absolute inset-0 animate-spin opacity-40"
+          style={{ color: 'var(--arasaka-red)' }}
+        />
       </div>
-      <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 font-mono animate-pulse">
-        Selecionando aleatoriamente...
+      <p
+        className="mono text-xs uppercase tracking-[0.3em] animate-pulse"
+        style={{ color: 'var(--fg-muted)' }}
+      >
+        // RANDOMIZING_ENTRY...
       </p>
     </main>
   );
