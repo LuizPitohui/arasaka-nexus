@@ -201,16 +201,27 @@ export default function Home() {
         <SearchBar query={query} setQuery={setQuery} searching={searching} />
 
         {/* HERO */}
-        <section className="mb-16 relative overflow-hidden scanlines">
+        <section className="mb-16 relative overflow-hidden scanlines bracket">
           <div
             className="px-8 py-12 relative"
             style={{
               background:
-                'linear-gradient(135deg, var(--bg-terminal), var(--bg-elevated))',
+                'linear-gradient(120deg, rgba(220,38,38,0.10) 0%, transparent 60%), var(--bg-deck)',
               border: '1px solid var(--border-faint)',
             }}
           >
-            <p className="kicker mb-3">// FEED_LIVE · {new Date().getFullYear()}.{String(new Date().getMonth() + 1).padStart(2, '0')}</p>
+            {/* hex grid overlay */}
+            <div
+              aria-hidden
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundImage: 'url(/hex-grid.svg)',
+                backgroundSize: '56px 48px',
+                opacity: 0.3,
+              }}
+            />
+            <div className="relative">
+            <p className="kicker mb-3">// PROTOCOL_07 // KNOWLEDGE_VAULT</p>
             <h1
               className="display text-5xl md:text-6xl mb-4 max-w-3xl uppercase"
               style={{ color: 'var(--fg-primary)' }}
@@ -265,6 +276,7 @@ export default function Home() {
               >
                 ▸ ENTRAR_VAULT
               </Link>
+            </div>
             </div>
           </div>
         </section>
@@ -486,7 +498,7 @@ function SearchBar({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="// QUERY_DATABASE..."
+          placeholder="// QUERY THE GRID..."
           className="w-full py-2.5 pl-10 pr-4 mono text-sm outline-none transition-all uppercase tracking-wider"
           style={{
             background: 'var(--bg-terminal)',

@@ -161,7 +161,7 @@ export default function MangaDetails() {
         </button>
 
         <p className="kicker mb-3">
-          // ENTRY_{String(manga.id).padStart(4, '0')}
+          // VAULT_RECORD #{String(manga.id).padStart(5, '0')}
         </p>
 
         <div className="flex flex-col md:flex-row gap-10">
@@ -243,7 +243,7 @@ export default function MangaDetails() {
             </p>
 
             <div
-              className="grid grid-cols-3 gap-4 mb-10 pb-6"
+              className="flex flex-wrap items-end gap-6 md:gap-8 mb-10 pb-6"
               style={{ borderBottom: '1px solid var(--border-faint)' }}
             >
               <Stat label="STATUS" value={manga.status} />
@@ -251,7 +251,31 @@ export default function MangaDetails() {
                 label="CHAPTERS"
                 value={String(manga.chapter_count ?? chapters.length)}
               />
-              <Stat label="AUTHOR" value={manga.author || '—'} />
+              <Stat
+                label="SOURCE"
+                value="MANGADEX_STREAM"
+                accent="var(--neon-cyan)"
+              />
+              {chapters.length > 0 && (
+                <Link
+                  href={`/read/${chapters[0].id}`}
+                  className="ml-auto mono inline-flex items-center gap-2 px-5 py-3 text-xs uppercase tracking-[0.3em] font-bold transition-colors"
+                  style={{
+                    background: 'var(--arasaka-red)',
+                    color: '#fff',
+                    border: '1px solid var(--arasaka-red)',
+                    boxShadow: 'var(--glow-red)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--arasaka-red-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--arasaka-red)';
+                  }}
+                >
+                  <BookOpen className="w-3.5 h-3.5" /> ▸ INICIAR_STREAM
+                </Link>
+              )}
             </div>
 
             <div className="flex items-center gap-3 mb-5">
@@ -336,7 +360,7 @@ export default function MangaDetails() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div className="flex flex-col gap-1">
       <span
@@ -346,8 +370,8 @@ function Stat({ label, value }: { label: string; value: string }) {
         // {label}
       </span>
       <span
-        className="text-sm font-bold uppercase"
-        style={{ color: 'var(--fg-primary)' }}
+        className="mono text-sm font-bold uppercase tracking-[0.15em]"
+        style={{ color: accent ?? 'var(--fg-primary)' }}
       >
         {value}
       </span>

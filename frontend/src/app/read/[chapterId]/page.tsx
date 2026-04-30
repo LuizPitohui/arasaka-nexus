@@ -417,6 +417,24 @@ export default function ReaderPage() {
         </div>
       )}
 
+      {/* HUD overlays (hidden in reduced mobile view) */}
+      <div
+        className="hidden md:block fixed left-6 top-20 z-30 mono text-[10px] uppercase tracking-[0.3em] px-3 py-2 bracket pointer-events-none"
+        style={{
+          background: 'rgba(0,0,0,0.6)',
+          border: '1px solid var(--border-faint)',
+          color: 'var(--neon-cyan)',
+        }}
+      >
+        // FIT:{prefs.fit.toUpperCase()} · MODE:{prefs.mode.toUpperCase()}
+      </div>
+      <div
+        className="hidden md:block fixed right-6 bottom-10 z-30 mono text-[10px] uppercase tracking-[0.3em] px-3 py-2 pointer-events-none"
+        style={{ color: 'var(--fg-muted)' }}
+      >
+        ◀ A · D ▶ · F:FULLSCREEN · M:MODE
+      </div>
+
       {/* CONTENT */}
       <div className="mt-14 w-full flex flex-col items-center" style={{ background: 'var(--bg-void)' }}>
         {/* diegetic chapter quote — shown once at the top of the stream */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -8,12 +8,31 @@ import { toast } from 'sonner';
 import { auth, ApiError } from '@/lib/api';
 import { ChevronMark } from '@/components/Brand';
 
+const BOOT_LINES = [
+  '> initiating handshake...',
+  '> kiroshi optics: ONLINE',
+  '> neural link: STABLE',
+  '> nexus shard 0x7a4f: ACQUIRED',
+  '> awaiting credentials_',
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [bootShown, setBootShown] = useState(0);
+  const [stage, setStage] = useState<'boot' | 'form'>('boot');
+
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    BOOT_LINES.forEach((_, i) => {
+      timers.push(setTimeout(() => setBootShown(i + 1), 220 + i * 240));
+    });
+    timers.push(setTimeout(() => setStage('form'), 1700));
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +117,37 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        {stage === 'boot' && (
+          <pre
+            className="mono leading-loose"
+            style={{
+              fontSize: 11,
+              color: 'var(--neon-green)',
+              minHeight: 220,
+              margin: 0,
+            }}
+            aria-live="polite"
+          >
+            {BOOT_LINES.slice(0, bootShown).map((line, i) => (
+              <div
+                key={i}
+                className="boot-line"
+                style={{
+                  color: i === BOOT_LINES.length - 1 ? 'var(--neon-green)' : 'var(--neon-green)',
+                  opacity: i < bootShown - 1 ? 0.7 : 1,
+                }}
+              >
+                {line}
+              </div>
+            ))}
+            {bootShown < BOOT_LINES.length && (
+              <span className="blink" style={{ color: 'var(--neon-green)' }}>█</span>
+            )}
+          </pre>
+        )}
+
+        {stage === 'form' && (
+        <form onSubmit={handleLogin} className="space-y-6 boot-line">
           <Field
             label="// AGENT_ID"
             type="text"
@@ -127,7 +176,7 @@ export default function LoginPage() {
                 color: 'var(--arasaka-red)',
               }}
             >
-              ⚠ {error}
+              [!!] {error}
             </div>
           )}
 
@@ -150,9 +199,10 @@ export default function LoginPage() {
                 e.currentTarget.style.background = 'var(--arasaka-red)';
             }}
           >
-            {submitting ? '// AUTHENTICATING...' : '>> AUTHENTICATE'}
+            {submitting ? '// AUTHENTICATING...' : '▸ AUTHENTICATE'}
           </button>
         </form>
+        )}
 
         <div
           className="mt-6 text-center mono text-[11px] uppercase tracking-widest"
