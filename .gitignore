@@ -9,6 +9,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!.env.prod.example
 !frontend/.env.example
 screenshots/  # (Opcional: remova se quiser que as fotos do README subam para o Git)
 
