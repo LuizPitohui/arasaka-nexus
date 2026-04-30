@@ -1,13 +1,16 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 
-const inter = Inter({ subsets: ["latin"] });
+import { HeaderShell } from '@/components/HeaderShell';
+
+import './globals.css';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Arasaka Nexus",
-  description: "Secure Personnel Database",
+  title: 'Arasaka Nexus — Manga Library',
+  description: 'Biblioteca digital de mangás com leitor integrado e estética cyberpunk.',
 };
 
 export default function RootLayout({
@@ -16,13 +19,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      {/* CORREÇÃO AQUI: Adicionamos suppressHydrationWarning para ignorar extensões do navegador */}
+    <html lang="pt-BR">
       <body className={inter.className} suppressHydrationWarning={true}>
+        <HeaderShell />
         {children}
-        <Toaster 
-          theme="dark" 
-          position="top-right" 
+        <Toaster
+          theme="dark"
+          position="top-right"
           toastOptions={{
             style: {
               background: '#000',

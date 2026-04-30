@@ -2,61 +2,51 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner'; // <--- O IMPORT QUE FALTAVA
+import Link from 'next/link';
+import { toast } from 'sonner';
+
+import { auth, ApiError } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    // Inicia a notificação de carregamento
+    setSubmitting(true);
     const loadId = toast.loading('Verifying credentials...');
 
     try {
-      const response = await fetch('http://localhost:8000/api/token/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-
-      // Remove a notificação de carregamento
+      await auth.login(username, password);
       toast.dismiss(loadId);
-
-      if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem('access_token', data.access);
-        localStorage.setItem('refresh_token', data.refresh);
-        
-        toast.success('Access Granted. Welcome, Agent.', {
-          style: { borderColor: '#16a34a', color: '#fff' }
-        });
-        
-        router.push('/');
-      } else {
-        setError('ACCESS DENIED: Invalid Credentials');
-        toast.error('Authentication Failed.', {
-            style: { borderColor: '#ef4444', color: '#fff' }
-        });
-      }
+      toast.success('Access Granted. Welcome, Agent.', {
+        style: { borderColor: '#16a34a', color: '#fff' },
+      });
+      router.push('/');
     } catch (err) {
       toast.dismiss(loadId);
-      console.error(err); // Log do erro real para debug
-      setError('SYSTEM ERROR: Connection Failed');
-      toast.error('Server Unreachable', {
-        style: { borderColor: '#ef4444', color: '#fff' }
+      if (err instanceof ApiError && err.status === 401) {
+        setError('ACCESS DENIED: Invalid Credentials');
+      } else if (err instanceof ApiError) {
+        setError(`SYSTEM ERROR (${err.status})`);
+      } else {
+        setError('SYSTEM ERROR: Connection Failed');
+      }
+      toast.error('Authentication Failed.', {
+        style: { borderColor: '#ef4444', color: '#fff' },
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <main className="min-h-screen bg-black flex items-center justify-center p-4 font-sans">
       <div className="w-full max-w-md border border-gray-800 bg-gray-900/50 p-8 shadow-2xl relative">
-        {/* Detalhe de Design: Borda Vermelha no Topo */}
         <div className="absolute top-0 left-0 w-full h-1 bg-red-600"></div>
 
         <div className="text-center mb-10">
@@ -75,10 +65,12 @@ export default function LoginPage() {
             </label>
             <input
               type="text"
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full bg-black border border-gray-700 text-white p-3 focus:border-red-600 outline-none transition-colors"
               placeholder="Enter your username"
+              required
             />
           </div>
 
@@ -88,10 +80,12 @@ export default function LoginPage() {
             </label>
             <input
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-black border border-gray-700 text-white p-3 focus:border-red-600 outline-none transition-colors"
               placeholder="••••••••"
+              required
             />
           </div>
 
@@ -103,13 +97,21 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 uppercase tracking-widest transition-all"
+            disabled={submitting}
+            className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 uppercase tracking-widest transition-all"
           >
-            Authenticate
+            {submitting ? 'Authenticating...' : 'Authenticate'}
           </button>
         </form>
 
-        <div className="mt-8 text-center">
+        <div className="mt-6 text-center text-xs text-zinc-500">
+          Sem credenciais?{' '}
+          <Link href="/register" className="text-red-500 hover:text-red-400 underline">
+            Solicitar acesso
+          </Link>
+        </div>
+
+        <div className="mt-6 text-center">
           <p className="text-gray-600 text-[10px] uppercase">
             Unauthorized access is a felony punishable by data erasure.
           </p>
