@@ -1,16 +1,17 @@
 # Arasaka Nexus — produção
-# - Postgres é externo (cluster global postgres-global na rede pgnet)
+# - Postgres é externo (cluster global postgres-global). O backend conecta
+#   via DB_HOST=<docker-bridge-ip>:5432 (mesmo padrão de gac-connect e
+#   sentinela). Não precisamos juntar redes — cada stack fica isolado.
 # - Único entrypoint público: nginx em ${NEXUS_HTTP_PORT:-8400}
 #   → Cloudflare aponta `nexus.arasaka.fun *` para http://localhost:8400
 # - Volume "media" compartilhado entre backend/worker/nginx pra servir
 #   covers e chapter_pages mirrorados
 #
 # Pré-requisitos no host:
-#   - Container postgres-global rodando, com DB e user provisionados
+#   - Container postgres-global rodando, com DB/user provisionados
 #     (ver deploy/DEPLOY.md)
-#   - Rede docker que conecta este compose ao postgres-global
-#     (default: postgres-global_default; ajuste em POSTGRES_NETWORK)
-#   - .env.prod preenchido (ver .env.prod.example)
+#   - .env.prod preenchido com DB_HOST = IP do bridge do postgres
+#     (descobrir com: docker inspect postgres-global -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
 
 services:
   redis:
@@ -43,9 +44,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    networks:
-      - default
-      - pg
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   celery:
     build:
@@ -62,9 +62,8 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
-    networks:
-      - default
-      - pg
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   beat:
     build:
@@ -79,9 +78,8 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
-    networks:
-      - default
-      - pg
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   frontend:
     build:
@@ -115,6 +113,3 @@ volumes:
 networks:
   default:
     name: nexus-net
-  pg:
-    external: true
-    name: ${POSTGRES_NETWORK:-postgres-global_default}
