@@ -91,19 +91,19 @@ export default function MangaDetails() {
       if (isFavorite) {
         await api.delete(`/accounts/favorites/by-manga/${params.id}/`);
         setIsFavorite(false);
-        toast.success('// REMOVED FROM ARCHIVE');
+        toast.success('// REMOVED FROM VAULT');
       } else {
         await api.post('/accounts/favorites/', {
           manga_id: Number(params.id),
         });
         setIsFavorite(true);
-        toast.success('// ARCHIVED');
+        toast.success('// VAULTED');
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         router.push(`/login?next=/manga/${params.id}`);
       } else {
-        toast.error('// ARCHIVE_FAIL');
+        toast.error('// VAULT_FAIL');
       }
     } finally {
       setFavLoading(false);
@@ -221,7 +221,7 @@ export default function MangaDetails() {
                   className={`w-3.5 h-3.5 ${isFavorite ? 'fill-current' : ''}`}
                 />
                 <span className="hidden md:inline">
-                  {isFavorite ? 'ARCHIVED' : 'ARCHIVE'}
+                  {isFavorite ? 'IN_VAULT' : 'VAULT'}
                 </span>
               </button>
             </div>

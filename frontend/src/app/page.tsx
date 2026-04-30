@@ -212,21 +212,60 @@ export default function Home() {
           >
             <p className="kicker mb-3">// FEED_LIVE · {new Date().getFullYear()}.{String(new Date().getMonth() + 1).padStart(2, '0')}</p>
             <h1
-              className="display text-5xl md:text-6xl mb-4 max-w-3xl"
+              className="display text-5xl md:text-6xl mb-4 max-w-3xl uppercase"
               style={{ color: 'var(--fg-primary)' }}
             >
-              Stream the{' '}
+              Direct Stream{' '}
               <span style={{ color: 'var(--arasaka-red)' }} className="glitch">
-                Nexus.
+                from the Grid.
               </span>
             </h1>
             <p
-              className="text-base max-w-xl"
+              className="text-base max-w-xl mb-8"
               style={{ color: 'var(--fg-secondary)' }}
             >
-              Manga library and integrated reader. Authenticated agents only.
-              Sync chapters, track progress, archive favorites.
+              Mangás sincronizados em tempo real, leitura criptografada via subnet.
+              Catálogo, leitor híbrido, vault pessoal — tudo no mesmo terminal, agente.
             </p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/popular"
+                className="mono inline-flex items-center gap-2 px-5 py-3 text-xs uppercase tracking-[0.3em] font-bold transition-all"
+                style={{
+                  background: 'var(--arasaka-red)',
+                  color: '#fff',
+                  border: '1px solid var(--arasaka-red)',
+                  boxShadow: 'var(--glow-red)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--arasaka-red-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--arasaka-red)';
+                }}
+              >
+                ▸ ENGAGE_STREAM
+              </Link>
+              <Link
+                href="/library"
+                className="mono inline-flex items-center gap-2 px-5 py-3 text-xs uppercase tracking-[0.3em] font-bold transition-colors"
+                style={{
+                  background: 'transparent',
+                  color: 'var(--fg-secondary)',
+                  border: '1px solid var(--border-mid)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+                  e.currentTarget.style.color = 'var(--arasaka-red)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-mid)';
+                  e.currentTarget.style.color = 'var(--fg-secondary)';
+                }}
+              >
+                ▸ ENTRAR_VAULT
+              </Link>
+            </div>
           </div>
         </section>
 

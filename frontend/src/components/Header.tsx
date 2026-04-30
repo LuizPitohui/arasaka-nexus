@@ -98,7 +98,7 @@ export function Header() {
               current={pathname}
               icon={<Library className="w-3 h-3" />}
             >
-              Biblioteca
+              Vault
             </NavLink>
           )}
         </nav>

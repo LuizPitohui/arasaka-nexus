@@ -156,7 +156,7 @@ export default function LibraryPage() {
               className="glitch-3 text-4xl md:text-5xl font-black tracking-tight"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Biblioteca
+              Vault
             </h1>
             <p
               className="mono text-[11px] uppercase tracking-widest"

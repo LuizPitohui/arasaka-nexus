@@ -311,6 +311,23 @@ export default function ReaderPage() {
           </div>
         </div>
 
+        {/* centered LIVE source label */}
+        <div
+          className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-2 mono text-[10px] uppercase tracking-[0.3em]"
+          style={{ color: 'var(--neon-cyan)' }}
+        >
+          <span
+            aria-hidden
+            className="inline-block w-1.5 h-1.5 rounded-full"
+            style={{
+              background: 'var(--neon-cyan)',
+              boxShadow: '0 0 6px var(--neon-cyan)',
+              animation: 'status-pulse 1.4s var(--ease-std) infinite',
+            }}
+          />
+          {data.source === 'LOCAL' ? 'LOCAL_CACHE' : 'MANGADEX_STREAM'} · LIVE
+        </div>
+
         <div className="flex items-center gap-1">
           <HUDButton
             active={showSettings}
@@ -402,8 +419,30 @@ export default function ReaderPage() {
 
       {/* CONTENT */}
       <div className="mt-14 w-full flex flex-col items-center" style={{ background: 'var(--bg-void)' }}>
+        {/* diegetic chapter quote — shown once at the top of the stream */}
+        {(prefs.mode === 'vertical' || prefs.mode === 'webtoon') && (
+          <div
+            className="mt-8 mb-4 px-4 py-3 max-w-md"
+            style={{
+              background: 'rgba(0,0,0,0.85)',
+              border: '1px solid var(--border-faint)',
+              borderLeft: '2px solid var(--arasaka-red)',
+            }}
+          >
+            <p
+              className="mono text-[11px] leading-relaxed"
+              style={{ color: 'var(--fg-secondary)' }}
+            >
+              &ldquo;O Nexus está te observando, agente. Sempre esteve.&rdquo;
+            </p>
+          </div>
+        )}
+
         {prefs.mode === 'vertical' && (
-          <div className="w-full md:max-w-3xl flex flex-col">
+          <div
+            className="relative w-full md:max-w-3xl flex flex-col bracket"
+            style={{ border: '1px solid var(--arasaka-red-glow)' }}
+          >
             {data.pages.map((page, index) => (
               <div key={index} className="leading-[0] w-full">
                 <img
@@ -418,7 +457,10 @@ export default function ReaderPage() {
         )}
 
         {prefs.mode === 'webtoon' && (
-          <div className="w-full max-w-2xl flex flex-col">
+          <div
+            className="relative w-full max-w-2xl flex flex-col bracket"
+            style={{ border: '1px solid var(--arasaka-red-glow)' }}
+          >
             {data.pages.map((page, index) => (
               <div key={index} className="leading-[0] w-full">
                 <img
@@ -514,10 +556,38 @@ function PagedView({ page, fitClass, onPrev, onNext }: {
 }) {
   if (!page) return null;
   return (
-    <div className="relative w-full flex items-center justify-center select-none" style={{ minHeight: 'calc(100vh - 3.5rem)', background: 'var(--bg-void)' }}>
-      <button onClick={onPrev} className="absolute left-0 top-0 bottom-0 w-1/3 z-10 cursor-w-resize" aria-label="Previous page" />
-      <button onClick={onNext} className="absolute right-0 top-0 bottom-0 w-1/3 z-10 cursor-e-resize" aria-label="Next page" />
-      <img src={resolvePageUrl(page.image)} alt={`Page ${page.order + 1}`} className={`mx-auto block ${fitClass}`} />
+    <div
+      className="relative w-full flex items-center justify-center select-none gap-4 md:gap-8 px-2 md:px-6"
+      style={{ minHeight: 'calc(100vh - 3.5rem)', background: 'var(--bg-void)' }}
+    >
+      {/* mobile/desktop hot zones — split L/R */}
+      <button
+        onClick={onPrev}
+        aria-label="Página anterior"
+        className="absolute left-0 top-0 bottom-0 w-1/3 z-0 md:hidden cursor-w-resize"
+      />
+      <button
+        onClick={onNext}
+        aria-label="Próxima página"
+        className="absolute right-0 top-0 bottom-0 w-2/3 z-0 md:hidden cursor-e-resize"
+      />
+      <ChevronEdge side="prev" onClick={onPrev} />
+      <div
+        className="relative bracket pointer-events-none"
+        style={{
+          border: '1px solid var(--arasaka-red-glow)',
+          padding: 4,
+          background: 'var(--bg-void)',
+          maxHeight: '92vh',
+        }}
+      >
+        <img
+          src={resolvePageUrl(page.image)}
+          alt={`Page ${page.order + 1}`}
+          className={`mx-auto block ${fitClass}`}
+        />
+      </div>
+      <ChevronEdge side="next" onClick={onNext} />
     </div>
   );
 }
@@ -527,11 +597,54 @@ function DoubleView({ left, right, onPrev, onNext }: {
 }) {
   if (!left) return null;
   return (
-    <div className="relative w-full flex items-center justify-center gap-1 select-none" style={{ minHeight: 'calc(100vh - 3.5rem)', background: 'var(--bg-void)' }}>
-      <button onClick={onPrev} className="absolute left-0 top-0 bottom-0 w-1/4 z-10 cursor-w-resize" />
-      <button onClick={onNext} className="absolute right-0 top-0 bottom-0 w-1/4 z-10 cursor-e-resize" />
-      <img src={resolvePageUrl(left.image)} alt={`Page ${left.order + 1}`} className="max-h-screen w-auto h-auto" />
-      {right && (<img src={resolvePageUrl(right.image)} alt={`Page ${right.order + 1}`} className="max-h-screen w-auto h-auto" />)}
+    <div
+      className="relative w-full flex items-center justify-center gap-4 md:gap-8 px-2 md:px-6 select-none"
+      style={{ minHeight: 'calc(100vh - 3.5rem)', background: 'var(--bg-void)' }}
+    >
+      <ChevronEdge side="prev" onClick={onPrev} />
+      <div
+        className="relative bracket pointer-events-none flex gap-1"
+        style={{
+          border: '1px solid var(--arasaka-red-glow)',
+          padding: 4,
+          background: 'var(--bg-void)',
+          maxHeight: '92vh',
+        }}
+      >
+        <img src={resolvePageUrl(left.image)} alt={`Page ${left.order + 1}`} className="max-h-[92vh] w-auto h-auto" />
+        {right && (
+          <img src={resolvePageUrl(right.image)} alt={`Page ${right.order + 1}`} className="max-h-[92vh] w-auto h-auto" />
+        )}
+      </div>
+      <ChevronEdge side="next" onClick={onNext} />
     </div>
+  );
+}
+
+function ChevronEdge({ side, onClick }: { side: 'prev' | 'next'; onClick: () => void }) {
+  const Icon = side === 'prev' ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      onClick={onClick}
+      aria-label={side === 'prev' ? 'Página anterior' : 'Próxima página'}
+      className="hidden md:flex relative z-20 items-center justify-center w-12 h-12 transition-colors flex-shrink-0"
+      style={{
+        background: 'rgba(0,0,0,0.6)',
+        border: '1px solid var(--border-mid)',
+        color: 'var(--fg-secondary)',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+        e.currentTarget.style.color = 'var(--arasaka-red)';
+        e.currentTarget.style.boxShadow = 'var(--glow-red)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'var(--border-mid)';
+        e.currentTarget.style.color = 'var(--fg-secondary)';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
+      <Icon className="w-5 h-5" />
+    </button>
   );
 }
