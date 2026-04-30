@@ -231,6 +231,12 @@ def get_chapter_pages(request, chapter_id: int):
 # ----------------------------------------------------------------------
 # Search (hybrid: local + MangaDex)
 # ----------------------------------------------------------------------
+# Local catalogue is queried first; only when it has fewer than this many hits
+# do we fan out to MangaDex (which has a tight 30/min budget shared across users).
+LOCAL_FIRST_THRESHOLD = 8
+LOCAL_LIMIT = 12
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 @throttle_classes([SearchThrottle])
@@ -239,23 +245,26 @@ def search_mangas(request):
     if not query:
         return Response([])
 
-    results = []
-    local_qs = Manga.objects.filter(title__icontains=query, is_active=True)[:5]
-    seen_dex_ids: set[str] = set()
-    for manga in local_qs:
-        if manga.mangadex_id:
-            seen_dex_ids.add(manga.mangadex_id)
-        results.append(
-            {
-                "id": manga.id,
-                "title": manga.title,
-                "cover": manga.cover,
-                "mangadex_id": manga.mangadex_id,
-                "in_library": True,
-            }
-        )
+    local_qs = list(
+        Manga.objects.filter(title__icontains=query, is_active=True)
+        .order_by("-id")[:LOCAL_LIMIT]
+    )
+    seen_dex_ids: set[str] = {m.mangadex_id for m in local_qs if m.mangadex_id}
 
-    if len(query) > 2:
+    results = [
+        {
+            "id": m.id,
+            "title": m.title,
+            "cover": m.cover,
+            "mangadex_id": m.mangadex_id,
+            "in_library": True,
+        }
+        for m in local_qs
+    ]
+
+    # Only consult MangaDex when the local catalogue is weak — keeps the
+    # upstream search budget free for genuinely unknown titles.
+    if len(query) > 2 and len(local_qs) < LOCAL_FIRST_THRESHOLD:
         scanner = MangaDexScanner()
         for ext in scanner.search_manga(query):
             dex_id = ext.get("mangadex_id")

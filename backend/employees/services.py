@@ -8,10 +8,20 @@ focused on translating MangaDex payloads into our local models.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Iterable, Optional
+
+from django.core.cache import cache
 
 from .mangadex_client import MangaDexClient, get_client
 from .models import Category, Chapter, Manga
+
+# Search results stay fresh enough for 5min — most users searching the same
+# title within 5min get the cached payload, so MangaDex's quota gets used once.
+SEARCH_CACHE_TTL = 300
+SEARCH_CACHE_PREFIX = "mangadex:search:"
+
+_WS_RE = re.compile(r"\s+")
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +76,14 @@ class MangaDexScanner:
     # Search (used by the omni-search endpoint)
     # --------------------------------------------------------------
     def search_manga(self, query: str, *, limit: int = 12) -> list[dict[str, Any]]:
+        # Normalize for cache hits: trim/lowercase/collapse whitespace.
+        normalized = _WS_RE.sub(" ", query.strip().lower())
+        cache_key = f"{SEARCH_CACHE_PREFIX}{limit}:{normalized}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            logger.debug("MangaDex search cache HIT: %r", normalized)
+            return cached
+
         params = {
             "title": query,
             "limit": limit,
@@ -79,9 +97,10 @@ class MangaDexScanner:
             logger.warning("Busca MangaDex falhou para '%s': %s", query, exc)
             return []
 
-        results: list[dict[str, Any]] = []
-        for manga_data in payload.get("data", []):
-            results.append(self._summarize(manga_data))
+        results: list[dict[str, Any]] = [
+            self._summarize(m) for m in payload.get("data", [])
+        ]
+        cache.set(cache_key, results, SEARCH_CACHE_TTL)
         return results
 
     # --------------------------------------------------------------

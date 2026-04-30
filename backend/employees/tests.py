@@ -252,6 +252,17 @@ class SearchTests(APITestCase):
         local_entries = [r for r in response.data if r["mangadex_id"] == "abc-123"]
         self.assertTrue(local_entries[0]["in_library"])
 
+    @patch("employees.views.MangaDexScanner")
+    def test_local_first_skips_mangadex_when_catalogue_is_strong(self, scanner_cls):
+        # 8+ local hits should make us skip the upstream call entirely.
+        for i in range(10):
+            _seed_manga(title=f"Naruto Volume {i}", mangadex_id=f"local-{i}")
+        response = self.client.get("/api/search/?q=naruto")
+        self.assertEqual(response.status_code, 200)
+        scanner_cls.assert_not_called()
+        # all returned entries are flagged as local
+        self.assertTrue(all(r["in_library"] for r in response.data))
+
 
 @override_settings(CACHES=LOCMEM_CACHE)
 class ImportMangaTests(APITestCase):
@@ -383,3 +394,33 @@ class ScannerTests(APITestCase):
         scanner = MangaDexScanner(client=client)
         results = scanner.search_manga("anything")
         self.assertEqual(results, [])
+
+    @override_settings(CACHES=LOCMEM_CACHE)
+    def test_search_caches_repeat_queries(self):
+        from .services import MangaDexScanner
+        from django.core.cache import cache
+
+        cache.clear()
+        client = MagicMock()
+        client.list_manga.return_value = {
+            "data": [
+                {
+                    "id": "dex-x",
+                    "attributes": {
+                        "title": {"en": "Cached"},
+                        "description": {"en": ""},
+                        "status": "ongoing",
+                    },
+                    "relationships": [],
+                }
+            ]
+        }
+        scanner = MangaDexScanner(client=client)
+
+        # First call hits upstream.
+        scanner.search_manga("Cached")
+        # Same query (case + whitespace differ) — should be cache hit, no upstream.
+        scanner.search_manga("  cached  ")
+        scanner.search_manga("CACHED")
+
+        self.assertEqual(client.list_manga.call_count, 1)
