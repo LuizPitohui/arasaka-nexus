@@ -86,7 +86,7 @@ class ReadingProgressSerializer(serializers.ModelSerializer):
     chapter_title = serializers.CharField(source="chapter.title", read_only=True)
     manga_id = serializers.IntegerField(source="chapter.manga_id", read_only=True)
     manga_title = serializers.CharField(source="chapter.manga.title", read_only=True)
-    manga_cover = serializers.CharField(source="chapter.manga.cover", read_only=True)
+    manga_cover = serializers.CharField(source="chapter.manga.cover_url", read_only=True)
 
     class Meta:
         model = ReadingProgress

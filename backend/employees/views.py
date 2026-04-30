@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 
+from django.core.cache import cache
 from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
@@ -17,6 +18,11 @@ from rest_framework.decorators import action, api_view, permission_classes, thro
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
+
+# Cache key for individual manga detail responses; short TTL since chapter
+# count changes when feeds sync.
+MANGA_DETAIL_CACHE_TTL = 60
+MANGA_DETAIL_CACHE_KEY = "manga:detail:{id}"
 
 
 class SearchThrottle(UserRateThrottle):
@@ -98,6 +104,27 @@ class MangaViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             return MangaListSerializer
         return MangaDetailSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        # Short cache (60s) — cuts repeated detail loads when a user opens
+        # several chapters in a row from the same page.
+        pk = kwargs.get("pk")
+        cache_key = MANGA_DETAIL_CACHE_KEY.format(id=pk)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+        response = super().retrieve(request, *args, **kwargs)
+        if response.status_code == 200:
+            cache.set(cache_key, response.data, MANGA_DETAIL_CACHE_TTL)
+        return response
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        cache.delete(MANGA_DETAIL_CACHE_KEY.format(id=serializer.instance.id))
+
+    def perform_destroy(self, instance):
+        cache.delete(MANGA_DETAIL_CACHE_KEY.format(id=instance.id))
+        super().perform_destroy(instance)
 
     def get_queryset(self):
         qs = Manga.objects.filter(is_active=True).prefetch_related("categories")
@@ -255,7 +282,7 @@ def search_mangas(request):
         {
             "id": m.id,
             "title": m.title,
-            "cover": m.cover,
+            "cover": m.cover_url,
             "mangadex_id": m.mangadex_id,
             "in_library": True,
         }
@@ -352,7 +379,7 @@ def home_content(request):
                 {
                     "id": m.id,
                     "title": m.title,
-                    "cover": m.cover,
+                    "cover": m.cover_url,
                     "categories": [c.name for c in m.categories.all()[:3]],
                 }
                 for m in featured
@@ -361,7 +388,7 @@ def home_content(request):
                 {
                     "id": m.id,
                     "title": m.title,
-                    "cover": m.cover,
+                    "cover": m.cover_url,
                     "status": m.status,
                 }
                 for m in recent

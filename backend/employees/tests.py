@@ -396,6 +396,30 @@ class ScannerTests(APITestCase):
         self.assertEqual(results, [])
 
     @override_settings(CACHES=LOCMEM_CACHE)
+    def test_manga_detail_uses_cache_on_repeat_hits(self):
+        from django.core.cache import cache as django_cache
+
+        django_cache.clear()
+        manga = _seed_manga(title="Cache Test")
+        # First call populates cache
+        r1 = self.client.get(f"/api/mangas/{manga.id}/")
+        self.assertEqual(r1.status_code, 200)
+        # Mutate underlying record — cached response should win on second call.
+        Manga.objects.filter(id=manga.id).update(title="Mutated")
+        r2 = self.client.get(f"/api/mangas/{manga.id}/")
+        self.assertEqual(r2.data["title"], "Cache Test")
+
+    @override_settings(CACHES=LOCMEM_CACHE)
+    def test_cover_uses_local_path_when_present(self):
+        manga = _seed_manga(title="With Local Cover")
+        manga.cover = "https://example.com/remote.jpg"
+        manga.cover_path = "covers/000001.jpg"
+        manga.save()
+        response = self.client.get(f"/api/mangas/{manga.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["cover"], "/media/covers/000001.jpg")
+
+    @override_settings(CACHES=LOCMEM_CACHE)
     def test_search_caches_repeat_queries(self):
         from .services import MangaDexScanner
         from django.core.cache import cache

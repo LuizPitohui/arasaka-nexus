@@ -8,15 +8,18 @@ take care of orchestration (dedupe locks, retries on transient errors).
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 
 import redis
+import requests
 from celery import shared_task
 from django.conf import settings
 from requests.exceptions import HTTPError, RequestException
 
-from .mangadex_client import RateLimitExceeded
-from .models import Manga
-from .services import MangaDexScanner
+from .mangadex_client import RateLimitExceeded, get_client
+from .models import Chapter, ChapterImage, Manga
+from .services import MangaDexScanner, get_mangadex_pages
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +184,177 @@ def task_sync_followed_feeds():
         return {"status": "ok", "synced": synced, "considered": len(followed_ids)}
     finally:
         redis_client.delete(lock_key)
+
+
+# ---------------------------------------------------------------------------
+# Cover mirror — download each manga's cover into MEDIA so the frontend stops
+# hitting uploads.mangadex.org (which has its own rate limit) and we keep the
+# image even if the upstream removes it.
+# ---------------------------------------------------------------------------
+COVER_DIR = "covers"
+COVER_USER_AGENT_HEADER = {"User-Agent": settings.MANGADEX_USER_AGENT}
+
+
+def _download_image(url: str, dest: Path, timeout: int = 20) -> int:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    response = requests.get(url, headers=COVER_USER_AGENT_HEADER, timeout=timeout, stream=True)
+    response.raise_for_status()
+    size = 0
+    with open(dest, "wb") as fh:
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            fh.write(chunk)
+            size += len(chunk)
+    return size
+
+
+@shared_task(name="employees.download_cover", bind=True, max_retries=2)
+def task_download_cover(self, manga_id: int):
+    manga = Manga.objects.filter(id=manga_id).first()
+    if not manga or not manga.cover or manga.cover_path:
+        return {"status": "skipped", "manga_id": manga_id}
+
+    url = manga.cover
+    ext = os.path.splitext(url.split("?", 1)[0])[1].lower() or ".jpg"
+    if ext not in (".jpg", ".jpeg", ".png", ".webp"):
+        ext = ".jpg"
+    rel_path = f"{COVER_DIR}/{manga_id:06d}{ext}"
+    dest = Path(settings.MEDIA_ROOT) / rel_path
+
+    try:
+        _download_image(url, dest)
+    except RequestException as exc:
+        logger.warning("Falha download cover %s: %s", manga_id, exc)
+        raise self.retry(exc=exc, countdown=60)
+
+    Manga.objects.filter(id=manga_id).update(cover_path=rel_path)
+    return {"status": "ok", "manga_id": manga_id, "path": rel_path}
+
+
+@shared_task(name="employees.scheduled_mirror_covers")
+def task_mirror_covers(batch: int = 100):
+    """Pick up to ``batch`` mangás with a remote cover but no local copy and
+    enqueue per-manga download tasks."""
+    redis_client = _redis_for_locks()
+    lock_key = "lock:scheduled_mirror_covers"
+    if not redis_client.set(lock_key, "1", nx=True, ex=1800):
+        return {"status": "skipped"}
+    try:
+        candidates = list(
+            Manga.objects.filter(is_active=True, cover_path__isnull=True)
+            .exclude(cover__isnull=True)
+            .exclude(cover="")
+            .order_by("-id")[:batch]
+            .values_list("id", flat=True)
+        )
+        for manga_id in candidates:
+            task_download_cover.delay(manga_id)
+        return {"status": "ok", "queued": len(candidates)}
+    finally:
+        redis_client.delete(lock_key)
+
+
+# ---------------------------------------------------------------------------
+# Pre-fetch pages — when a chapter is followed by users, mirror its images
+# locally so the reader serves from /media/ instead of streaming MangaDex.
+# ---------------------------------------------------------------------------
+PAGES_DIR = "chapter_pages"
+
+
+@shared_task(name="employees.prefetch_chapter_pages", bind=True, max_retries=2)
+def task_prefetch_chapter_pages(self, chapter_id: int):
+    chapter = Chapter.objects.filter(id=chapter_id).select_related("manga").first()
+    if not chapter or not chapter.mangadex_id:
+        return {"status": "skipped", "chapter_id": chapter_id}
+    if ChapterImage.objects.filter(chapter=chapter).exists():
+        return {"status": "noop", "chapter_id": chapter_id}
+
+    try:
+        pages = get_mangadex_pages(chapter.mangadex_id)
+    except RateLimitExceeded as exc:
+        raise self.retry(exc=exc, countdown=60)
+
+    if not pages:
+        return {"status": "no_pages", "chapter_id": chapter_id}
+
+    saved = 0
+    for page in pages:
+        url = page["image"]
+        order = page["order"]
+        ext = os.path.splitext(url.split("?", 1)[0])[1].lower() or ".jpg"
+        if ext not in (".jpg", ".jpeg", ".png", ".webp"):
+            ext = ".jpg"
+        rel = f"{PAGES_DIR}/{chapter.id:08d}/{order:03d}{ext}"
+        dest = Path(settings.MEDIA_ROOT) / rel
+        try:
+            _download_image(url, dest)
+        except RequestException as exc:
+            logger.warning("Page download falhou ch=%s pg=%s: %s", chapter_id, order, exc)
+            continue
+        ChapterImage.objects.update_or_create(
+            chapter=chapter,
+            order=order,
+            defaults={"image": rel},
+        )
+        saved += 1
+
+    return {"status": "ok", "chapter_id": chapter_id, "saved": saved}
+
+
+# NOTE: there is no beat-scheduled bulk prefetch task. Bulk-mirroring every
+# chapter of every favorited manga is unsustainable storage-wise (an old
+# 1000-chapter series alone is ~12 GB). ``task_prefetch_chapter_pages`` above
+# stays as an on-demand entry point — call it manually for a single chapter
+# the user is actively about to read, or wire it from the frontend later.
+
+
+@shared_task(name="employees.scheduled_cleanup_old_pages")
+def task_cleanup_old_pages():
+    """Remove ``ChapterImage`` records whose chapter has had no reading progress
+    in ``PAGE_MIRROR_TTL_DAYS`` days, freeing disk. Only the local mirror is
+    deleted — the chapter row stays so a future visit can re-fetch from MangaDex
+    on demand (with the rate-limit-aware client).
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    cutoff = timezone.now() - timedelta(days=settings.PAGE_MIRROR_TTL_DAYS)
+
+    # Chapters with images but no recent reading progress.
+    try:
+        from accounts.models import ReadingProgress  # local import
+
+        active_chapter_ids = set(
+            ReadingProgress.objects.filter(updated_at__gte=cutoff)
+            .values_list("chapter_id", flat=True)
+        )
+    except Exception:  # pragma: no cover
+        active_chapter_ids = set()
+
+    stale_images = ChapterImage.objects.exclude(chapter_id__in=active_chapter_ids)
+    deleted_files = 0
+    deleted_rows = 0
+    media_root = Path(settings.MEDIA_ROOT)
+    for img in stale_images.iterator(chunk_size=500):
+        rel = str(img.image)
+        if rel:
+            full = media_root / rel
+            try:
+                if full.is_file():
+                    full.unlink()
+                    deleted_files += 1
+            except OSError as exc:
+                logger.warning("Falha ao apagar %s: %s", full, exc)
+        img.delete()
+        deleted_rows += 1
+
+    return {
+        "status": "ok",
+        "deleted_files": deleted_files,
+        "deleted_rows": deleted_rows,
+    }
 
 
 @shared_task(name="employees.scheduled_cleanup_orphans")

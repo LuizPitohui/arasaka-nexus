@@ -33,6 +33,7 @@ class MangaListSerializer(serializers.ModelSerializer):
     """Lightweight payload for list endpoints (search, home, listings)."""
 
     categories = serializers.SerializerMethodField()
+    cover = serializers.SerializerMethodField()
 
     class Meta:
         model = Manga
@@ -49,10 +50,14 @@ class MangaListSerializer(serializers.ModelSerializer):
     def get_categories(self, obj: Manga) -> list[str]:
         return [c.name for c in obj.categories.all()[:5]]
 
+    def get_cover(self, obj: Manga) -> str:
+        return obj.cover_url
+
 
 class MangaDetailSerializer(serializers.ModelSerializer):
     categories = CategorySerializer(many=True, read_only=True)
     chapter_count = serializers.SerializerMethodField()
+    cover = serializers.SerializerMethodField()
 
     class Meta:
         model = Manga
@@ -73,3 +78,6 @@ class MangaDetailSerializer(serializers.ModelSerializer):
 
     def get_chapter_count(self, obj: Manga) -> int:
         return obj.chapters.count()
+
+    def get_cover(self, obj: Manga) -> str:
+        return obj.cover_url

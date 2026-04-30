@@ -180,11 +180,25 @@ CELERY_BEAT_SCHEDULE = {
         # every 6 hours at xx:15 to spread load away from the hourly job
         "schedule": crontab(minute=15, hour="*/6"),
     },
+    "mirror-covers": {
+        "task": "employees.scheduled_mirror_covers",
+        # every 30min: enqueues up to 100 cover downloads per run
+        "schedule": crontab(minute="*/30"),
+    },
+    "cleanup-old-pages": {
+        "task": "employees.scheduled_cleanup_old_pages",
+        # daily 03:30 — frees disk for chapter pages older than 30 days
+        # whose users haven't touched them. Only mirrors actively used.
+        "schedule": crontab(minute=30, hour=3),
+    },
     "cleanup-orphan-mangas": {
         "task": "employees.scheduled_cleanup_orphans",
         "schedule": crontab(minute=30, hour=4),  # daily 04:30 local
     },
 }
+
+# Storage limits for the on-demand page mirror
+PAGE_MIRROR_TTL_DAYS = int(os.environ.get("PAGE_MIRROR_TTL_DAYS", "30"))
 
 # --- Cache (Redis) ---
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/1")

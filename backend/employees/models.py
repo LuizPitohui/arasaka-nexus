@@ -24,9 +24,12 @@ class Manga(models.Model):
     alternative_title = models.CharField(max_length=255, blank=True, null=True)
     description = models.TextField(blank=True, null=True) # Deixei opcional para evitar erros na importação
     
-    # MUDANÇA TÁTICA: CharField para aceitar URL externa OU caminho local
-    cover = models.CharField(max_length=500, blank=True, null=True) 
-    
+    # External cover URL (MangaDex CDN). Kept as fallback when local mirror not yet downloaded.
+    cover = models.CharField(max_length=500, blank=True, null=True)
+    # Local mirrored cover relative to MEDIA_ROOT, e.g. "covers/0042.jpg".
+    # Populated by ``task_download_cover``; serializer prefers it over ``cover``.
+    cover_path = models.CharField(max_length=300, blank=True, null=True)
+
     author = models.CharField(max_length=100, default="Desconhecido")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ONGOING')
     categories = models.ManyToManyField(Category, related_name='mangas', blank=True)
@@ -35,6 +38,17 @@ class Manga(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def cover_url(self) -> str:
+        """Effective cover URL: local mirror if available, else MangaDex remote."""
+        if self.cover_path:
+            from django.conf import settings as dj_settings
+
+            base = (dj_settings.MEDIA_URL or "/media/").rstrip("/")
+            return f"{base}/{self.cover_path}"
+        return self.cover or ""
+
 
 class Chapter(models.Model):
     manga = models.ForeignKey(Manga, on_delete=models.CASCADE, related_name='chapters')
