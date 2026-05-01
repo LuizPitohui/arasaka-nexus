@@ -19,6 +19,7 @@ import Loader from '@/components/Loader';
 type ReaderPage = {
   id: number | string;
   image: string;
+  image_saver?: string | null;
   order: number;
 };
 
@@ -62,6 +63,57 @@ function resolvePageUrl(path: string): string {
   if (path.startsWith('http')) return path;
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   return `${apiOrigin}${cleanPath}`;
+}
+
+/**
+ * Reader image with two-stage fallback:
+ *   1. start with high-quality `image` URL
+ *   2. on 404, swap to `image_saver` (MangaDex dataSaver — JPG, mais robusto)
+ *   3. if saver also fails, kick the parent's onUnrecoverableError so it can
+ *      try a `?refresh=1` reissue once.
+ */
+function ReaderImage({
+  page,
+  onUnrecoverableError,
+  className,
+  loading,
+  alt,
+}: {
+  page: ReaderPage;
+  onUnrecoverableError: () => void;
+  className?: string;
+  loading?: 'eager' | 'lazy';
+  alt: string;
+}) {
+  const [stage, setStage] = useState<'data' | 'saver' | 'failed'>('data');
+  // Reset when the page identity (or its primary URL) changes.
+  useEffect(() => {
+    setStage('data');
+  }, [page.image, page.image_saver]);
+
+  const src =
+    stage === 'data'
+      ? resolvePageUrl(page.image)
+      : stage === 'saver' && page.image_saver
+        ? resolvePageUrl(page.image_saver)
+        : '';
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      loading={loading}
+      onError={() => {
+        if (stage === 'data' && page.image_saver) {
+          setStage('saver');
+        } else {
+          setStage('failed');
+          onUnrecoverableError();
+        }
+      }}
+    />
+  );
 }
 
 function loadPrefs(): Prefs {
@@ -492,12 +544,12 @@ export default function ReaderPage() {
           >
             {data.pages.map((page, index) => (
               <div key={index} className="leading-[0] w-full">
-                <img
-                  src={resolvePageUrl(page.image)}
+                <ReaderImage
+                  page={page}
                   alt={`Page ${index + 1}`}
                   className={`block select-none mx-auto ${fitClasses[prefs.fit]}`}
                   loading={index < 3 ? 'eager' : 'lazy'}
-                  onError={handlePageError}
+                  onUnrecoverableError={handlePageError}
                 />
               </div>
             ))}
@@ -511,12 +563,12 @@ export default function ReaderPage() {
           >
             {data.pages.map((page, index) => (
               <div key={index} className="leading-[0] w-full">
-                <img
-                  src={resolvePageUrl(page.image)}
+                <ReaderImage
+                  page={page}
                   alt={`Page ${index + 1}`}
                   className="block w-full h-auto select-none"
                   loading={index < 3 ? 'eager' : 'lazy'}
-                  onError={handlePageError}
+                  onUnrecoverableError={handlePageError}
                 />
               </div>
             ))}
@@ -649,11 +701,11 @@ function PagedView({ page, fitClass, onPrev, onNext, onError }: {
           maxHeight: '92vh',
         }}
       >
-        <img
-          src={resolvePageUrl(page.image)}
+        <ReaderImage
+          page={page}
           alt={`Page ${page.order + 1}`}
           className={`mx-auto block ${fitClass}`}
-          onError={onError}
+          onUnrecoverableError={onError}
         />
       </div>
       <ChevronEdge side="next" onClick={onNext} />
@@ -684,9 +736,9 @@ function DoubleView({ left, right, onPrev, onNext, onError }: {
           maxHeight: '92vh',
         }}
       >
-        <img src={resolvePageUrl(left.image)} alt={`Page ${left.order + 1}`} className="max-h-[92vh] w-auto h-auto" onError={onError} />
+        <ReaderImage page={left} alt={`Page ${left.order + 1}`} className="max-h-[92vh] w-auto h-auto" onUnrecoverableError={onError} />
         {right && (
-          <img src={resolvePageUrl(right.image)} alt={`Page ${right.order + 1}`} className="max-h-[92vh] w-auto h-auto" onError={onError} />
+          <ReaderImage page={right} alt={`Page ${right.order + 1}`} className="max-h-[92vh] w-auto h-auto" onUnrecoverableError={onError} />
         )}
       </div>
       <ChevronEdge side="next" onClick={onNext} />

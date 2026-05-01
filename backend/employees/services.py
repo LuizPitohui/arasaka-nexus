@@ -51,19 +51,29 @@ def get_mangadex_pages(
     chapter = data.get("chapter") or {}
     chapter_hash = chapter.get("hash")
     filenames = chapter.get("data") or []
+    saver_filenames = chapter.get("dataSaver") or []
 
     if not (base_url and chapter_hash and filenames):
         logger.warning("Resposta /at-home/server inválida para %s", mangadex_chapter_id)
         return []
 
-    return [
-        {
-            "id": index,
-            "image": f"{base_url}/data/{chapter_hash}/{filename}",
-            "order": index,
-        }
-        for index, filename in enumerate(filenames)
-    ]
+    pages = []
+    for index, filename in enumerate(filenames):
+        # dataSaver pode ter qty diferente em raros casos — usamos None se faltar
+        saver_filename = saver_filenames[index] if index < len(saver_filenames) else None
+        pages.append(
+            {
+                "id": index,
+                "image": f"{base_url}/data/{chapter_hash}/{filename}",
+                "image_saver": (
+                    f"{base_url}/data-saver/{chapter_hash}/{saver_filename}"
+                    if saver_filename
+                    else None
+                ),
+                "order": index,
+            }
+        )
+    return pages
 
 
 # ----------------------------------------------------------------------
