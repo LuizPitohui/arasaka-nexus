@@ -30,10 +30,17 @@ const FALLBACK_TITLES: Record<string, string> = {
  * apply a tiny subset (headings, paragraphs, lists, bold, links).
  */
 function escape(s: string): string {
+  // Escapa todos os 5 caracteres relevantes pro contexto HTML.
+  // Especialmente importante " porque a saida e usada DENTRO de href="..."
+  // — sem isso, um attacker que comprometesse uma conta admin poderia
+  // injetar atributo (onmouseover=...) e rodar XSS persistente em
+  // /termos, /privacidade, /aviso-legal.
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function renderMarkdown(md: string): string {

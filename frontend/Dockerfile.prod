@@ -7,10 +7,11 @@
 ############################
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-# Use npm ci when lockfile is present (reproducible), fall back to install otherwise.
-RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; \
-    else npm install --no-audit --no-fund; fi
+COPY package.json package-lock.json ./
+# `npm ci` exige lockfile e e estritamente reproduzivel — versoes batem
+# exatamente com o lock. Se o lockfile sumir, o build falha (intencional:
+# previne supply-chain risk de subir versoes silenciosamente).
+RUN npm ci --no-fund
 
 ############################
 # 2. builder — next build

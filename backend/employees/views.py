@@ -262,6 +262,12 @@ class ChapterViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        # Defense-in-depth: o gate de adulto e aplicado no nivel de manga.
+        # Se o usuario nao pode ver mangas adultos, escondemos os capitulos
+        # deles aqui tambem (alem do MangaViewSet ja filtrar). Garantia
+        # adicional contra IDOR enumerando manga_id em /api/chapters/.
+        if not _user_can_see_adult(self.request):
+            queryset = queryset.filter(manga__content_rating__in=SAFE_RATINGS)
         manga_id = self.request.query_params.get("manga")
         if manga_id is not None:
             queryset = queryset.filter(manga_id=manga_id)
@@ -313,7 +319,19 @@ def chapter_languages(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def get_chapter_pages(request, chapter_id: int):
-    chapter = get_object_or_404(Chapter, id=chapter_id)
+    from django.http import Http404 as _Http404
+
+    chapter = get_object_or_404(Chapter.objects.select_related("manga"), id=chapter_id)
+
+    # Defense-in-depth: bloqueia leitura de capitulos de mangas adultos para
+    # usuarios sem verificacao 18+ ou opt-in. MangaViewSet.retrieve ja faz
+    # isso, mas /api/read/<id>/ e endpoint independente — nao podemos confiar
+    # no gate da pagina anterior.
+    if (
+        chapter.manga.content_rating in ADULT_RATINGS
+        and not _user_can_see_adult(request)
+    ):
+        raise _Http404("not found")
 
     # Mantemos o usuario na mesma lingua ao avancar/voltar capitulo. Quando a
     # lingua atual eh desconhecida (registros antigos sem translated_language),
@@ -523,12 +541,26 @@ def proxy_mihon_image(request, chapter_id: int, page_index: int):
     Mesmo padrão do `proxy_chapter_image` (MangaDex): pega URL fresca,
     streama via StreamingHttpResponse, headers de cache pro Cloudflare
     cachear no edge.
+
+    Defense-in-depth: bloqueia paginas de mangas adultos pra usuarios sem
+    verificacao 18+ — caso atacante consiga chapter_id valido, nao serve as
+    imagens.
     """
     from sources import registry as sources_registry
 
-    chapter = Chapter.objects.filter(id=chapter_id, source_id="mihon").only("mangadex_id").first()
+    chapter = (
+        Chapter.objects.filter(id=chapter_id, source_id="mihon")
+        .select_related("manga")
+        .only("mangadex_id", "manga__content_rating")
+        .first()
+    )
     if not chapter or not chapter.mangadex_id:
         raise Http404("chapter not found")
+    if (
+        chapter.manga.content_rating in ADULT_RATINGS
+        and not _user_can_see_adult(request)
+    ):
+        raise Http404("not found")
 
     src_mihon = sources_registry.get("mihon")
     if not src_mihon or not getattr(src_mihon, "is_configured", False):
@@ -574,7 +606,22 @@ def proxy_mihon_image(request, chapter_id: int, page_index: int):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def proxy_chapter_image(request, chapter_id: int, page_index: int):
-    """Stream a single page through our origin. Falls back to dataSaver on 404."""
+    """Stream a single page through our origin. Falls back to dataSaver on 404.
+
+    Defense-in-depth: bloqueia paginas de mangas adultos pra usuarios sem
+    verificacao 18+ — caso atacante enumere chapter_id, nao serve as imagens.
+    """
+    chapter_meta = (
+        Chapter.objects.filter(id=chapter_id)
+        .select_related("manga")
+        .only("manga__content_rating")
+        .first()
+    )
+    if chapter_meta and (
+        chapter_meta.manga.content_rating in ADULT_RATINGS
+        and not _user_can_see_adult(request)
+    ):
+        raise Http404("not found")
 
     def _fetch(saver: bool, force_refresh: bool = False):
         url = _build_page_url(chapter_id, page_index, saver=saver, force_refresh=force_refresh)
