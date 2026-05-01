@@ -18,6 +18,7 @@ import {
 
 import { ApiError, api, auth, tokenStore } from '@/lib/api';
 import Brand from './Brand';
+import { GlobalSearch } from './GlobalSearch';
 
 type Me = { id: number; username: string; email: string; is_staff: boolean };
 
@@ -156,6 +157,9 @@ export function Header() {
               </NavLink>
             )}
           </nav>
+
+          {/* Global search — inline on desktop, icon-overlay on mobile */}
+          <GlobalSearch />
 
           {/* Right cluster — username/login (hidden on mobile, lives in drawer) */}
           <div className="hidden md:flex items-center gap-3">

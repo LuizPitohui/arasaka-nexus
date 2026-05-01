@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Clock, Flame, PlayCircle, Search } from 'lucide-react';
+import { Clock, Flame, PlayCircle } from 'lucide-react';
 
-import { ApiError, api, tokenStore } from '@/lib/api';
+import { api, tokenStore } from '@/lib/api';
 import Loader from '@/components/Loader';
 import { MangaCard, type GridManga } from '@/components/MangaGrid';
 
@@ -23,29 +23,11 @@ type RecentManga = {
   status: string;
 };
 
-type SearchResult = {
-  id: number | string;
-  title: string;
-  cover: string;
-  mangadex_id: string;
-  in_library: boolean;
-  description?: string;
-  status?: string;
-};
-
 type HomeResponse = {
   seeding: boolean;
   total: number;
   featured: FeaturedManga[];
   recent: RecentManga[];
-};
-
-type ImportResponse = {
-  status: string;
-  task_id: string;
-  message: string;
-  manga_id: number | null;
-  created: boolean;
 };
 
 type ContinueItem = {
@@ -65,10 +47,6 @@ export default function Home() {
   const [seeding, setSeeding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [continueItems, setContinueItems] = useState<ContinueItem[]>([]);
-
-  const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     if (!tokenStore.getAccess()) return;
@@ -97,97 +75,11 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    if (query.trim().length < 3) {
-      setSearchResults([]);
-      return;
-    }
-    const handle = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const results = await api.get<SearchResult[]>(
-          `/search/?q=${encodeURIComponent(query.trim())}`,
-          { auth: false },
-        );
-        setSearchResults(Array.isArray(results) ? results : []);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 429) {
-          console.warn('Search rate limit atingido');
-        } else {
-          console.error(err);
-        }
-      } finally {
-        setSearching(false);
-      }
-    }, 400);
-
-    return () => clearTimeout(handle);
-  }, [query]);
-
-  const handleOpenManga = async (
-    manga: SearchResult | FeaturedManga | RecentManga,
-  ) => {
-    const localId = typeof manga.id === 'number' ? manga.id : null;
-    if (localId !== null) {
-      router.push(`/manga/${localId}`);
-      return;
-    }
-    const dexId = (manga as SearchResult).mangadex_id;
-    if (!dexId) return;
-    try {
-      const res = await api.post<ImportResponse>('/import/', {
-        mangadex_id: dexId,
-      });
-      if (res.manga_id) router.push(`/manga/${res.manga_id}`);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen" style={{ background: 'var(--bg-void)' }}>
         <Loader fullscreen label="SYNCING_GLOBAL_DATABASE" caption="// PULLING_HOMEPAGE_FEED" />
       </div>
-    );
-  }
-
-  // SEARCH MODE
-  if (query.length > 2) {
-    return (
-      <main
-        className="min-h-screen p-8 max-w-7xl mx-auto"
-        style={{ background: 'var(--bg-void)', color: 'var(--fg-primary)' }}
-      >
-        <SearchBar query={query} setQuery={setQuery} searching={searching} />
-        <div className="mb-6">
-          <p className="kicker mb-1">// SEARCH_RESULTS</p>
-          <h2
-            className="display text-2xl"
-            style={{ color: 'var(--fg-primary)' }}
-          >
-            &quot;{query}&quot;
-          </h2>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-x-5 gap-y-8">
-          {searchResults.map((manga) => (
-            <div
-              key={`${manga.mangadex_id}-${manga.id}`}
-              onClick={() => handleOpenManga(manga)}
-              className="cursor-pointer"
-            >
-              <MangaCard
-                manga={{
-                  id: typeof manga.id === 'number' ? manga.id : 0,
-                  title: manga.title,
-                  cover: manga.cover,
-                  status: manga.status,
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      </main>
     );
   }
 
@@ -198,8 +90,6 @@ export default function Home() {
       style={{ background: 'var(--bg-void)', color: 'var(--fg-primary)' }}
     >
       <div className="max-w-7xl mx-auto p-8">
-        <SearchBar query={query} setQuery={setQuery} searching={searching} />
-
         {/* HERO */}
         <section className="mb-16 relative overflow-hidden scanlines bracket">
           <div
@@ -472,49 +362,3 @@ function Section({
   );
 }
 
-function SearchBar({
-  query,
-  setQuery,
-  searching,
-}: {
-  query: string;
-  setQuery: (v: string) => void;
-  searching: boolean;
-}) {
-  return (
-    <div className="mb-10 flex justify-end">
-      <div className="relative w-full md:w-[420px]">
-        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-          {searching ? (
-            <span className="loader-dot" style={{ color: 'var(--arasaka-red)' }} />
-          ) : (
-            <Search
-              className="w-4 h-4"
-              style={{ color: 'var(--fg-muted)' }}
-            />
-          )}
-        </div>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="// QUERY THE GRID..."
-          className="w-full py-2.5 pl-10 pr-4 mono text-sm outline-none transition-all uppercase tracking-wider"
-          style={{
-            background: 'var(--bg-terminal)',
-            border: '1px solid var(--border-mid)',
-            color: 'var(--fg-primary)',
-          }}
-          onFocus={(e) => {
-            e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-            e.currentTarget.style.boxShadow = 'var(--glow-red)';
-          }}
-          onBlur={(e) => {
-            e.currentTarget.style.borderColor = 'var(--border-mid)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        />
-      </div>
-    </div>
-  );
-}
