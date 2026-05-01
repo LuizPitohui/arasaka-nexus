@@ -35,11 +35,13 @@ from datetime import timedelta
 
 from django.conf import settings
 from rest_framework.response import Response
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+# Re-export do nome do cookie pra mantermos uma fonte de verdade no
+# auth_classes.py (que e o modulo plug-in nas REST_FRAMEWORK settings
+# e tem que ser leve pra evitar circular import).
+from .auth_classes import ACCESS_COOKIE, CookieJWTAuthentication  # noqa: F401
 
-ACCESS_COOKIE = "nexus_access"
 REFRESH_COOKIE = "nexus_refresh"
 
 
@@ -76,26 +78,6 @@ def clear_login_cookies(response: Response) -> Response:
     response.delete_cookie(ACCESS_COOKIE, path="/")
     response.delete_cookie(REFRESH_COOKIE, path="/")
     return response
-
-
-class CookieJWTAuthentication(JWTAuthentication):
-    """Aceita JWT do cookie ``nexus_access`` ou do header ``Authorization``.
-
-    Header tem prioridade (compat com curl/postman/clientes mobile). Cookie
-    e o caminho default pro browser depois da migracao.
-    """
-
-    def authenticate(self, request):
-        # Tenta header primeiro (Authorization: Bearer ...)
-        header_result = super().authenticate(request)
-        if header_result is not None:
-            return header_result
-        # Fallback pro cookie HttpOnly
-        raw_token = request.COOKIES.get(ACCESS_COOKIE)
-        if not raw_token:
-            return None
-        validated = self.get_validated_token(raw_token)
-        return self.get_user(validated), validated
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):

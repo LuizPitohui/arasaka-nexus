@@ -131,7 +131,8 @@ REST_FRAMEWORK = {
         # Aceita JWT do cookie HttpOnly (default browser) com fallback pro
         # header Authorization (curl/clientes API). Bloqueia exfiltracao via
         # XSS porque tokens sao HttpOnly e fora do alcance do JS.
-        "accounts.auth_jwt.CookieJWTAuthentication",
+        # accounts.auth_classes (modulo leve, evita circular import com Views)
+        "accounts.auth_classes.CookieJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticatedOrReadOnly",
