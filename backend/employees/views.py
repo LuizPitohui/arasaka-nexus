@@ -776,6 +776,9 @@ def import_manga(request):
 
     # ----------------- MIHON -----------------
     if source == "mihon":
+        from sources import registry as sources_registry
+        from .tasks import _persist_mihon_manga
+
         external_id = payload.get("external_id") or payload.get("id") or ""
         if not external_id or ":" not in external_id:
             return Response(
@@ -785,8 +788,7 @@ def import_manga(request):
         storage_id = f"mihon:{external_id}"
         existing = Manga.objects.filter(mangadex_id=storage_id, source_id="mihon").first()
         if existing:
-            # Re-sync em background, mas devolve o manga_id pra o frontend ja
-            # navegar imediatamente.
+            # Re-sync em background — frontend ja tem manga_id, navega na hora.
             task_import_mihon_manga.delay(external_id)
             return Response(
                 {
@@ -797,22 +799,47 @@ def import_manga(request):
                 },
                 status=status.HTTP_202_ACCEPTED,
             )
-        # Primeiro import — roda sincrono pra termos manga_id na resposta.
-        result = task_import_mihon_manga(external_id)
-        if result.get("status") == "ok":
+
+        # Primeiro import — sincrono APENAS metadados, com timeout curto pra
+        # nao prender worker gunicorn. Capitulos via Celery em background.
+        # Isso isola o request HTTP do tempo de fetch_chapters (que pode
+        # demorar segundos pra obras com muitos capitulos).
+        src_mihon = sources_registry.get("mihon")
+        if src_mihon is None or not getattr(src_mihon, "is_configured", False):
             return Response(
-                {
-                    "status": "ok",
-                    "manga_id": result.get("manga_id"),
-                    "created": result.get("created", True),
-                    "chapters_synced": result.get("chapters_synced", 0),
-                    "message": "Importado.",
-                },
-                status=status.HTTP_201_CREATED,
+                {"error": "mihon-not-configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        try:
+            manga_dto = src_mihon.fetch_manga(external_id, timeout=5)
+        except Exception:
+            logger.exception("import_manga: fetch_manga sync falhou para %s", external_id)
+            return Response(
+                {"error": "upstream-slow"},
+                status=status.HTTP_504_GATEWAY_TIMEOUT,
+            )
+        if not manga_dto or not manga_dto.title or manga_dto.title in (
+            "(id inválido)", "(não encontrado)"
+        ):
+            return Response(
+                {"error": "not-found", "external_id": external_id},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Persiste so metadados — rapido, em ms (single INSERT).
+        manga, created, _ = _persist_mihon_manga(manga_dto, fetch_chapters_for=None)
+        # Dispara task assincrona pra puxar capitulos. Nao bloqueia.
+        task_import_mihon_manga.delay(external_id)
+
         return Response(
-            {"status": result.get("status"), "reason": result.get("reason", "")},
-            status=status.HTTP_502_BAD_GATEWAY,
+            {
+                "status": "ok",
+                "manga_id": manga.id,
+                "created": created,
+                "chapters_pending": True,
+                "message": "Metadados importados; capitulos chegando em background.",
+            },
+            status=status.HTTP_201_CREATED,
         )
 
     # ----------------- MANGADEX (default) -----------------

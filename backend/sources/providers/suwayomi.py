@@ -71,12 +71,16 @@ class SuwayomiSource(BaseSource):
     def is_configured(self) -> bool:
         return bool(self.base_url)
 
-    def _get(self, path: str, **params) -> Optional[dict | list]:
+    def _get(self, path: str, *, timeout: Optional[float] = None, **params) -> Optional[dict | list]:
         if not self.is_configured:
             return None
         url = f"{self.base_url}{path}"
         try:
-            r = self.session.get(url, params=params or None, timeout=self.REQUEST_TIMEOUT)
+            r = self.session.get(
+                url,
+                params=params or None,
+                timeout=timeout if timeout is not None else self.REQUEST_TIMEOUT,
+            )
             r.raise_for_status()
             return r.json()
         except Exception as exc:
@@ -230,11 +234,13 @@ class SuwayomiSource(BaseSource):
     # ------------------------------------------------------------------
     # Manga / Chapters / Pages
     # ------------------------------------------------------------------
-    def fetch_manga(self, external_id: str) -> MangaDTO:
+    def fetch_manga(self, external_id: str, *, timeout: Optional[float] = None) -> MangaDTO:
+        """Detalhes da obra. Aceita timeout custom — usado pelo import sync
+        que precisa devolver rapido (timeout curto + fallback async)."""
         inner_id, manga_id = self._split_external(external_id)
         if manga_id is None:
             return MangaDTO(external_id=external_id, title="(id inválido)")
-        data = self._get(f"/api/v1/manga/{manga_id}")
+        data = self._get(f"/api/v1/manga/{manga_id}", timeout=timeout)
         if not data:
             return MangaDTO(external_id=external_id, title="(não encontrado)")
         cover = data.get("thumbnailUrl") or ""
