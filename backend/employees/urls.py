@@ -9,6 +9,7 @@ from .views import (
     get_chapter_pages,
     home_content,
     import_manga,
+    proxy_chapter_image,
     search_mangas,
 )
 
@@ -20,6 +21,11 @@ router.register(r"chapters", ChapterViewSet)
 urlpatterns = [
     path("", include(router.urls)),
     path("read/<int:chapter_id>/", get_chapter_pages, name="read_chapter"),
+    path(
+        "cdn/chapter/<int:chapter_id>/<int:page_index>/",
+        proxy_chapter_image,
+        name="cdn_chapter_image",
+    ),
     path("search/", search_mangas, name="search_mangas"),
     path("import/", import_manga, name="import_manga"),
     path("home-data/", home_content, name="home_content"),

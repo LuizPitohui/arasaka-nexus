@@ -65,6 +65,7 @@ from .serializers import (
     MangaDetailSerializer,
     MangaListSerializer,
 )
+from .mangadex_client import get_client
 from .services import MangaDexScanner, get_mangadex_pages
 from .tasks import task_import_manga_chapters, task_seed_initial_library
 
@@ -276,7 +277,11 @@ def get_chapter_pages(request, chapter_id: int):
         pages = ChapterImageSerializer(local_images, many=True).data
     elif chapter.mangadex_id:
         source = "MANGADEX_STREAM"
-        pages = get_mangadex_pages(chapter.mangadex_id, force_refresh=force_refresh)
+        pages = get_mangadex_pages(
+            chapter.mangadex_id,
+            force_refresh=force_refresh,
+            chapter_id=chapter.id,
+        )
 
     return Response(
         {
@@ -289,6 +294,90 @@ def get_chapter_pages(request, chapter_id: int):
             "navigation": {"prev": prev_chapter_id, "next": next_chapter_id},
         }
     )
+
+
+# ----------------------------------------------------------------------
+# CDN proxy — streams MangaDex@Home images through our origin so users
+# whose ISP/Cloudflare blocks *.mangadex.network still see pages. Cloudflare
+# in front caches each (chapter_id, index) tuple after the first request.
+# ----------------------------------------------------------------------
+import requests as _requests
+from django.http import Http404, HttpResponse, StreamingHttpResponse
+
+
+def _build_page_url(chapter_id: int, page_index: int, *, saver: bool, force_refresh: bool = False) -> str | None:
+    chapter = Chapter.objects.filter(id=chapter_id).only("mangadex_id").first()
+    if not chapter or not chapter.mangadex_id:
+        return None
+    try:
+        data = get_client().get_at_home_server(chapter.mangadex_id, force_refresh=force_refresh)
+    except Exception:
+        return None
+    base_url = data.get("baseUrl")
+    ch = data.get("chapter") or {}
+    chapter_hash = ch.get("hash")
+    files = ch.get("dataSaver" if saver else "data") or []
+    if not (base_url and chapter_hash) or page_index >= len(files):
+        return None
+    kind = "data-saver" if saver else "data"
+    return f"{base_url}/{kind}/{chapter_hash}/{files[page_index]}"
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def proxy_chapter_image(request, chapter_id: int, page_index: int):
+    """Stream a single page through our origin. Falls back to dataSaver on 404."""
+
+    def _fetch(saver: bool, force_refresh: bool = False):
+        url = _build_page_url(chapter_id, page_index, saver=saver, force_refresh=force_refresh)
+        if not url:
+            return None, None
+        try:
+            r = _requests.get(
+                url,
+                timeout=20,
+                stream=True,
+                headers={
+                    "User-Agent": getattr(get_client(), "user_agent", "ArasakaNexus/0.1"),
+                    "Referer": "https://mangadex.org/",
+                },
+            )
+        except Exception as exc:
+            logger.warning("proxy fetch failed (%s saver=%s): %s", url, saver, exc)
+            return None, None
+        return r, url
+
+    # Try 1: data
+    r, _u = _fetch(saver=False)
+    # Try 2: dataSaver
+    if r is None or r.status_code == 404:
+        if r is not None:
+            r.close()
+        r, _u = _fetch(saver=True)
+    # Try 3: force_refresh + data
+    if r is None or r.status_code == 404:
+        if r is not None:
+            r.close()
+        r, _u = _fetch(saver=False, force_refresh=True) if False else (None, None)
+        # we keep this branch off since baseUrl rarely changes; saver fallback above is the meaningful one
+
+    if r is None:
+        raise Http404("upstream unavailable")
+    if r.status_code != 200:
+        r.close()
+        return HttpResponse(status=r.status_code)
+
+    content_type = r.headers.get("Content-Type", "image/jpeg")
+    response = StreamingHttpResponse(
+        r.iter_content(chunk_size=64 * 1024),
+        content_type=content_type,
+    )
+    # Cloudflare-friendly headers — page bytes are immutable per (chapter, index)
+    # because chapter hashes don't change for a published chapter.
+    response["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    if cl := r.headers.get("Content-Length"):
+        response["Content-Length"] = cl
+    return response
 
 
 # ----------------------------------------------------------------------

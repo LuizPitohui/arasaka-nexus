@@ -30,7 +30,10 @@ logger = logging.getLogger(__name__)
 # Reader helper (used by the chapter pages endpoint)
 # ----------------------------------------------------------------------
 def get_mangadex_pages(
-    mangadex_chapter_id: str, *, force_refresh: bool = False
+    mangadex_chapter_id: str,
+    *,
+    force_refresh: bool = False,
+    chapter_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Return the list of page URLs for a given MangaDex chapter id.
 
@@ -61,15 +64,24 @@ def get_mangadex_pages(
     for index, filename in enumerate(filenames):
         # dataSaver pode ter qty diferente em raros casos — usamos None se faltar
         saver_filename = saver_filenames[index] if index < len(saver_filenames) else None
+        # Quando temos o chapter_id local, servimos via nosso proxy. Isso evita
+        # bloqueio de *.mangadex.network por DNS/ISP/Cloudflare e habilita
+        # cache global no edge da CF (Cache-Control: max-age=86400).
+        if chapter_id is not None:
+            primary = f"/api/cdn/chapter/{chapter_id}/{index}/"
+            saver = None  # proxy ja faz fallback para dataSaver server-side
+        else:
+            primary = f"{base_url}/data/{chapter_hash}/{filename}"
+            saver = (
+                f"{base_url}/data-saver/{chapter_hash}/{saver_filename}"
+                if saver_filename
+                else None
+            )
         pages.append(
             {
                 "id": index,
-                "image": f"{base_url}/data/{chapter_hash}/{filename}",
-                "image_saver": (
-                    f"{base_url}/data-saver/{chapter_hash}/{saver_filename}"
-                    if saver_filename
-                    else None
-                ),
+                "image": primary,
+                "image_saver": saver,
                 "order": index,
             }
         )
