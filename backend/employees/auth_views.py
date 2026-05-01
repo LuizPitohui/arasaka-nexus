@@ -103,40 +103,44 @@ class RegisterSerializer(serializers.ModelSerializer):
 @permission_classes([AllowAny])
 @throttle_classes([RegisterThrottle])
 def register(request):
+    from accounts.auth_jwt import apply_login_cookies
+
     serializer = RegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
 
     refresh = RefreshToken.for_user(user)
-    return Response(
+    response = Response(
         {
             "user": {
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
             },
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
+            # Tokens nao saem mais no body — viajam em HttpOnly cookies.
+            "detail": "registered",
         },
         status=status.HTTP_201_CREATED,
     )
+    return apply_login_cookies(response, access=str(refresh.access_token), refresh=str(refresh))
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def logout(request):
-    """Blacklist the supplied refresh token so it can no longer mint accesses."""
-    token_str = (request.data or {}).get("refresh")
-    if not token_str:
-        return Response(
-            {"error": "refresh token é obrigatório"}, status=status.HTTP_400_BAD_REQUEST
-        )
-    try:
-        token = RefreshToken(token_str)
-        token.blacklist()
-    except TokenError as exc:
-        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    return Response(status=status.HTTP_205_RESET_CONTENT)
+    """Blacklist o refresh token (cookie OU body) e limpa os cookies."""
+    from accounts.auth_jwt import REFRESH_COOKIE, clear_login_cookies
+
+    token_str = (request.data or {}).get("refresh") or request.COOKIES.get(REFRESH_COOKIE)
+    if token_str:
+        try:
+            RefreshToken(token_str).blacklist()
+        except TokenError:
+            # Token ja expirado/blacklisted — segue limpando cookies igual.
+            pass
+
+    response = Response(status=status.HTTP_205_RESET_CONTENT)
+    return clear_login_cookies(response)
 
 
 @api_view(["GET"])

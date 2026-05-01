@@ -128,7 +128,10 @@ if not DEBUG:
 # --- DRF ---
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # Aceita JWT do cookie HttpOnly (default browser) com fallback pro
+        # header Authorization (curl/clientes API). Bloqueia exfiltracao via
+        # XSS porque tokens sao HttpOnly e fora do alcance do JS.
+        "accounts.auth_jwt.CookieJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticatedOrReadOnly",
