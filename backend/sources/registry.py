@@ -26,31 +26,32 @@ logger = logging.getLogger(__name__)
 
 # Mapa estático: id → "module:Class". Adicionar um provider novo é uma linha aqui.
 #
-# Status atual de cada provider (verificado em 2026-05-01):
-#   ✅ mangadex    — JSON API oficial, sem rate-limit issues, totalmente funcional
-#   ✅ mangaplus   — JSON API oficial Shueisha (jumpg-webapi), sem anti-bot
-#   ⚠️  asurascans — site migrou pra Astro em asurascans.com com paths novos;
-#                    provider antigo nao parseia o HTML. Precisa reescrita.
-#   ❌ comick      — DNS sinkholed em redes que filtram agregadores; canonical
-#                    (comick.dev) atras de Cloudflare IUAM (anti-bot). Exige
-#                    cloudscraper/headless pra passar.
-#   ❌ tsuki       — anti-bot JS (window.location.replace token). Mesmo padrao.
-#   ❌ bato        — TCP block (provedor pode bloquear). ConnectTimeout.
-#   ❌ lermanga    — DNS sinkhole (resolve para 127.0.0.1).
-#   ❌ brmangas    — dominio parqueado (brmangas.net foi vendido).
-#   ❌ goldenmangas — dominio parqueado (goldenmangas.top foi vendido).
+# Status (verificado em 2026-05-01):
+#
+# ATIVAS (default):
+#   ✅ mangadex    — JSON API oficial, sem rate-limit issues
+#   ✅ mangaplus   — JSON API oficial Shueisha (jumpg-webapi)
+#
+# REATIVAVEIS COM TRABALHO (registradas, fora do default):
+#   🔧 asurascans  — site migrou pra Astro/asurascans.com com paths novos.
+#                    Provider antigo nao parseia. Reescrita ~1h.
+#   🛡️ tsuki      — Cloudflare IUAM. Precisa flaresolverr ou cloudscraper.
+#
+# DESCONTINUADAS (tiradas do mapa — nao tem como reabilitar daqui):
+#   - comick       api.comick.fun nao existe mais; canonical (comick.dev)
+#                  esta atras de CF IUAM e DNS sinkholed em redes filtradas.
+#   - bato         TCP block do provedor de rede (ConnectTimeout em 443).
+#   - lermanga     DNS sinkhole no autoritativo do dominio (-> 127.0.0.1).
+#   - brmangas     dominio parqueado (brmangas.net foi vendido).
+#   - goldenmangas dominio parqueado (goldenmangas.top foi vendido).
+#   Os arquivos de provider permanecem no diretorio para historico/testes,
+#   mas nao sao registrados aqui — chamada externa devolve None pelo lookup.
 PROVIDER_MAP: dict[str, str] = {
     "mangadex": "sources.providers.mangadex:MangaDexSource",
     "mangaplus": "sources.providers.mangaplus:MangaPlusSource",
-    # Os abaixo estao no mapa para que SOURCES_ENABLED possa habilita-los
-    # quando o ambiente permitir, mas estao fora do default.
-    "comick": "sources.providers.comick:ComickSource",
-    "tsuki": "sources.providers.tsuki:TsukiSource",
-    "bato": "sources.providers.bato:BatoSource",
+    # Reativaveis com trabalho — nao no default
     "asurascans": "sources.providers.asurascans:AsuraScansSource",
-    "lermanga": "sources.providers.lermanga:LermangaSource",
-    "goldenmangas": "sources.providers.goldenmangas:GoldenmangasSource",
-    "brmangas": "sources.providers.brmangas:BrmangasSource",
+    "tsuki": "sources.providers.tsuki:TsukiSource",
 }
 
 
