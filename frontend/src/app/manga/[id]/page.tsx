@@ -23,6 +23,7 @@ type Category = { id: number; name: string; slug: string };
 type MangaDetail = {
   id: number;
   mangadex_id: string | null;
+  source_id?: string;
   title: string;
   alternative_title: string | null;
   description: string | null;
@@ -32,6 +33,12 @@ type MangaDetail = {
   content_rating?: string;
   categories: Category[];
   chapter_count: number;
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  mangadex: 'MANGADEX_STREAM',
+  mihon: 'MIHON_STREAM',
+  local: 'LOCAL_CACHE',
 };
 
 type Chapter = {
@@ -398,7 +405,7 @@ function MangaDetailBody({
               />
               <Stat
                 label="SOURCE"
-                value="MANGADEX_STREAM"
+                value={SOURCE_LABEL[manga.source_id ?? 'mangadex'] ?? (manga.source_id ?? 'EXTERNAL').toUpperCase() + '_STREAM'}
                 accent="var(--neon-cyan)"
               />
               {chapters.length > 0 && (

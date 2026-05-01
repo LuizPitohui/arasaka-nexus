@@ -49,6 +49,7 @@ class MangaListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "mangadex_id",
+            "source_id",
             "title",
             "cover",
             "status",
@@ -74,6 +75,7 @@ class MangaDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "mangadex_id",
+            "source_id",
             "title",
             "alternative_title",
             "description",
