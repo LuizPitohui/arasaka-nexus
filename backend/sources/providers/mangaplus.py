@@ -1,37 +1,35 @@
-"""MangaPlus by Shueisha (https://mangaplus.shueisha.co.jp).
+"""MANGA Plus by SHUEISHA (https://mangaplus.shueisha.co.jp).
 
-Catálogo OFICIAL de mangás Shueisha (One Piece, Jujutsu Kaisen, Kagurabachi,
-Sakamoto Days, Spy x Family, etc.). Conteúdo legalmente publicado, em
-inglês/espanhol/português/etc, gratuito (com janela: primeiros + últimos 3
-capítulos costumam ser livres).
+Plataforma oficial Shueisha — sem questões de copyright. Disponível em
+inglês, espanhol-LA, português-BR, francês, indonésio, vietnamita, tailandês
+e russo. A API oficial usa protobuf binário, mas o backend aceita um query
+parameter `?format=json` que devolve JSON estruturado — usamos esse caminho.
 
-Estado deste provider:
-  ✅ Search/listagem/detalhes via HTML público (mangaplus.shueisha.co.jp)
-  ⚠️ Páginas (`fetch_pages`) requer parsing protobuf — `jumpg-webapi.tokyo-cdn.com`
-     responde com Content-Type: application/octet-stream e payload em
-     protobuf. As extensões do Mihon resolvem isso compilando um conjunto de
-     `.proto` (https://github.com/keiyoushi/extensions/tree/main/src/all/mangaplus)
-     mais um XOR leve nas URLs finais.
+Endpoints utilizados:
 
-Para entregar o provider hoje em modo "discovery only" (search/detail/chapters),
-deixamos `fetch_pages` retornando `[]` com TODO. Isso é suficiente pra:
-  - aparecer nos resultados da busca
-  - alimentar o painel de saúde
-  - sinalizar ao usuário que existe na fonte oficial
+  GET https://jumpg-webapi.tokyo-cdn.com/api/title_list/allV2?format=json
+      → catálogo completo (~250 títulos), 1 só payload de ~270KB.
+      Usado para `search()` (filtragem client-side por substring).
 
-Próximo passo dedicado: adicionar `protobuf` ao pyproject + copiar os `.proto`
-do upstream Mihon e gerar o stub Python. ~2h de trabalho.
+  GET .../api/title_detailV3?title_id=<id>&format=json
+      → detalhes de um título incluindo lista de capítulos.
+
+  GET .../api/manga_viewer?chapter_id=<id>&split=yes&img_quality=high&format=json
+      → URLs assinadas das páginas de um capítulo (links com expiry curto).
+
+Search é client-side: baixamos o catálogo e filtramos por substring no
+`name`/`author`. Como a Mangaplus tem catálogo enxuto (~250 títulos),
+isso é simples e barato (cache de 30min em Redis).
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import time
 from typing import Optional
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
+from django.core.cache import cache
 
 from ..base.dto import ChapterDTO, HealthResult, MangaDTO, PageDTO
 from ..base.http import BaseHTTPClient, SourceHTTPError
@@ -39,81 +37,151 @@ from ..base.source import BaseSource
 
 logger = logging.getLogger(__name__)
 
-_TITLE_ID_RE = re.compile(r"/titles/(\d+)")
+
+# Cache do catálogo completo. 250 títulos ~270KB de JSON — vale guardar.
+_CATALOG_CACHE_KEY = "sources:mangaplus:catalog_v2"
+_CATALOG_TTL_SECONDS = 30 * 60  # 30 min
 
 
 class MangaPlusSource(BaseSource):
     id = "mangaplus"
-    name = "MangaPlus (Shueisha)"
-    base_url = "https://mangaplus.shueisha.co.jp"
-    languages = ["en", "es-la", "pt-br", "ru", "fr", "id", "vi", "th"]
-    kind = "hybrid"
+    name = "MANGA Plus (Shueisha)"
+    base_url = "https://jumpg-webapi.tokyo-cdn.com/api"
+    languages = ["en", "es-la", "pt-br", "fr", "id", "vi", "th", "ru"]
+    kind = "api"
+
+    SITE_URL = "https://mangaplus.shueisha.co.jp"
 
     def __init__(self):
         self.client = BaseHTTPClient(
             source_id=self.id,
             base_url=self.base_url,
-            default_headers={"Referer": self.base_url + "/"},
+            default_headers={
+                "Accept": "application/json",
+                "Origin": self.SITE_URL,
+                "Referer": self.SITE_URL + "/",
+            },
         )
+
+    # ---------- catalog (cached) ----------
+
+    def _fetch_catalog(self) -> list[dict]:
+        cached = cache.get(_CATALOG_CACHE_KEY)
+        if cached is not None:
+            return cached
+        try:
+            resp = self.client.get(
+                "/title_list/allV2",
+                endpoint="catalog",
+                params={"format": "json"},
+            )
+            payload = resp.json()
+        except (SourceHTTPError, ValueError):
+            return []
+        groups = (
+            payload.get("success", {})
+            .get("allTitlesViewV2", {})
+            .get("AllTitlesGroup", [])
+        )
+        catalog: list[dict] = []
+        for g in groups:
+            for t in g.get("titles") or []:
+                catalog.append(t)
+        cache.set(_CATALOG_CACHE_KEY, catalog, _CATALOG_TTL_SECONDS)
+        return catalog
 
     # ---------- search ----------
 
     def search(self, query: str, page: int = 1) -> list[MangaDTO]:
-        # MangaPlus não tem busca por título via HTML público; a busca real
-        # está em jumpg-webapi.tokyo-cdn.com (protobuf). Por ora trazemos a
-        # listagem completa de títulos disponíveis e filtramos no cliente.
-        try:
-            resp = self.client.get("/manga_list/all", endpoint="search")
-        except SourceHTTPError:
+        q = (query or "").strip().lower()
+        if not q:
             return []
-        all_titles = self._parse_listing(resp.text)
-        if not query:
-            return all_titles
-        ql = query.lower()
-        return [t for t in all_titles if ql in t.title.lower()]
+        catalog = self._fetch_catalog()
+        out: list[MangaDTO] = []
+        for t in catalog:
+            name = (t.get("name") or "").lower()
+            author = (t.get("author") or "").lower()
+            if q in name or q in author:
+                out.append(self._to_manga_dto(t))
+                if len(out) >= 20:
+                    break
+        return out
 
     def fetch_manga(self, external_id: str) -> MangaDTO:
         try:
-            resp = self.client.get(f"/titles/{external_id}", endpoint="manga")
-        except SourceHTTPError:
+            resp = self.client.get(
+                "/title_detailV3",
+                endpoint="manga",
+                params={"title_id": external_id, "format": "json"},
+            )
+            payload = resp.json()
+        except (SourceHTTPError, ValueError):
             return MangaDTO(external_id=external_id, title="(não encontrado)")
-        soup = BeautifulSoup(resp.text, "html.parser")
-        title_el = soup.select_one("h1, .title-name")
-        cover_el = soup.select_one("img.title-image, img.cover")
-        desc_el = soup.select_one("p.title-overview, .overview")
+        view = payload.get("success", {}).get("titleDetailView", {})
+        title = view.get("title") or {}
+        lang = self._lang_code((title.get("language") or "").lower())
         return MangaDTO(
             external_id=external_id,
-            title=self._text(title_el) or external_id,
-            url=urljoin(self.base_url, f"/titles/{external_id}"),
-            cover_url=(cover_el.get("src") if cover_el else "") or "",
-            description=self._text(desc_el),
-            languages=list(self.languages),
+            title=title.get("name") or external_id,
+            url=urljoin(self.SITE_URL + "/", f"titles/{external_id}"),
+            cover_url=title.get("portraitImageUrl") or title.get("landscapeImageUrl") or "",
+            description=view.get("overview") or "",
+            languages=[lang] if lang else [],
         )
 
     # ---------- chapters ----------
 
-    def fetch_chapters(self, external_id: str, language: Optional[str] = None) -> list[ChapterDTO]:
-        # Lista mínima a partir do HTML — protobuf traz mais detalhes.
+    def fetch_chapters(
+        self, external_id: str, language: Optional[str] = None
+    ) -> list[ChapterDTO]:
         try:
-            resp = self.client.get(f"/titles/{external_id}", endpoint="chapters")
-        except SourceHTTPError:
+            resp = self.client.get(
+                "/title_detailV3",
+                endpoint="chapters",
+                params={"title_id": external_id, "format": "json"},
+            )
+            payload = resp.json()
+        except (SourceHTTPError, ValueError):
             return []
-        soup = BeautifulSoup(resp.text, "html.parser")
+        view = payload.get("success", {}).get("titleDetailView", {})
+        title = view.get("title") or {}
+        lang = self._lang_code((title.get("language") or "").lower())
+        # Capitulos vivem em chapterListGroup/firstChapterList/lastChapterList
+        # dependendo da versao da resposta. Coletamos tudo e dedupamos.
+        flat: list[dict] = []
+        for key in ("firstChapterList", "lastChapterList", "chapterListGroup"):
+            v = view.get(key)
+            if isinstance(v, list):
+                for entry in v:
+                    if isinstance(entry, dict) and (
+                        "midListChapters" in entry
+                        or "firstChapterList" in entry
+                        or "lastChapterList" in entry
+                    ):
+                        flat.extend(entry.get("firstChapterList") or [])
+                        flat.extend(entry.get("midListChapters") or [])
+                        flat.extend(entry.get("lastChapterList") or [])
+                    elif isinstance(entry, dict):
+                        flat.append(entry)
+        seen: set[int] = set()
         out: list[ChapterDTO] = []
-        for a in soup.select("a[href*='/viewer/']"):
-            href = a.get("href", "")
-            m = re.search(r"/viewer/(\d+)", href)
-            if not m:
+        for ch in flat:
+            cid = ch.get("chapterId")
+            if not cid or cid in seen:
                 continue
-            text = self._text(a)
-            number = self._extract_number(text)
+            seen.add(cid)
+            sub = (ch.get("subTitle") or "").lstrip("#").strip()
+            try:
+                num = float(sub.split()[0]) if sub else 0.0
+            except (TypeError, ValueError, IndexError):
+                num = 0.0
             out.append(
                 ChapterDTO(
-                    external_id=m.group(1),
-                    number=number,
-                    title=text,
-                    language="en",
-                    url=urljoin(self.base_url, href),
+                    external_id=str(cid),
+                    number=num,
+                    title=ch.get("name") or sub,
+                    language=lang,
+                    url=urljoin(self.SITE_URL + "/", f"viewer/{cid}"),
                 )
             )
         return out
@@ -121,12 +189,36 @@ class MangaPlusSource(BaseSource):
     # ---------- pages ----------
 
     def fetch_pages(self, chapter_external_id: str) -> list[PageDTO]:
-        # TODO(mangaplus-protobuf): integrar parsing protobuf para
-        # jumpg-webapi.tokyo-cdn.com/api/manga_viewer?chapter_id=<id>&split=yes&img_quality=high
-        # mais o XOR leve nas URLs finais (key vem na própria resposta).
-        # Depende do pacote `protobuf` + .proto compilados (ver docstring do módulo).
-        logger.info("MangaPlus: fetch_pages ainda requer integração protobuf")
-        return []
+        try:
+            resp = self.client.get(
+                "/manga_viewer",
+                endpoint="pages",
+                params={
+                    "chapter_id": chapter_external_id,
+                    "split": "yes",
+                    "img_quality": "high",
+                    "format": "json",
+                },
+            )
+            payload = resp.json()
+        except (SourceHTTPError, ValueError):
+            return []
+        view = payload.get("success", {}).get("mangaViewer", {})
+        pages_raw = view.get("pages") or []
+        out: list[PageDTO] = []
+        for i, p in enumerate(pages_raw):
+            mp = p.get("mangaPage") or p
+            url = mp.get("imageUrl")
+            if not url:
+                continue
+            out.append(
+                PageDTO(
+                    index=i,
+                    url=url,
+                    headers={"Referer": self.SITE_URL + "/"},
+                )
+            )
+        return out
 
     # ---------- health ----------
 
@@ -134,8 +226,9 @@ class MangaPlusSource(BaseSource):
         t0 = time.monotonic()
         try:
             resp = self.client.get(
-                "/manga_list/all",
+                "/title_list/allV2",
                 endpoint="healthcheck",
+                params={"format": "json"},
                 record_telemetry=False,
             )
         except SourceHTTPError as exc:
@@ -148,55 +241,48 @@ class MangaPlusSource(BaseSource):
                 extracted_count=0,
             )
         latency = int((time.monotonic() - t0) * 1000)
-        items = self._parse_listing(resp.text)
+        try:
+            payload = resp.json()
+        except ValueError:
+            payload = {}
+        groups = (
+            payload.get("success", {})
+            .get("allTitlesViewV2", {})
+            .get("AllTitlesGroup", [])
+        )
+        count = sum(len(g.get("titles") or []) for g in groups)
         return HealthResult(
-            success=resp.status_code < 400,
+            success=resp.status_code < 400 and count > 0,
             latency_ms=latency,
             status_code=resp.status_code,
-            extracted_count=len(items),
+            extracted_count=count,
         )
 
-    # ---------- helpers ----------
+    # ---------- DTO mapping ----------
 
-    def _parse_listing(self, html: str) -> list[MangaDTO]:
-        soup = BeautifulSoup(html, "html.parser")
-        out: list[MangaDTO] = []
-        for a in soup.select("a[href*='/titles/']"):
-            href = a.get("href", "")
-            m = _TITLE_ID_RE.search(href)
-            if not m:
-                continue
-            title_el = a.select_one(".title-name, .item-title, span")
-            cover_el = a.select_one("img")
-            title = self._text(title_el) or self._text(a)
-            if not title:
-                continue
-            out.append(
-                MangaDTO(
-                    external_id=m.group(1),
-                    title=title,
-                    url=urljoin(self.base_url, href),
-                    cover_url=(cover_el.get("src") if cover_el else "") or "",
-                    languages=list(self.languages),
-                )
-            )
-        # dedup por id (a listagem repete o mesmo título em várias seções)
-        seen: set[str] = set()
-        deduped: list[MangaDTO] = []
-        for dto in out:
-            if dto.external_id in seen:
-                continue
-            seen.add(dto.external_id)
-            deduped.append(dto)
-        return deduped
+    def _to_manga_dto(self, t: dict) -> MangaDTO:
+        tid = t.get("titleId")
+        lang = self._lang_code((t.get("language") or "").lower())
+        return MangaDTO(
+            external_id=str(tid),
+            title=t.get("name") or "",
+            url=urljoin(self.SITE_URL + "/", f"titles/{tid}"),
+            cover_url=t.get("portraitImageUrl") or t.get("landscapeImageUrl") or "",
+            description="",
+            languages=[lang] if lang else [],
+        )
 
     @staticmethod
-    def _text(el) -> str:
-        return el.get_text(strip=True) if el else ""
-
-    @staticmethod
-    def _extract_number(text: str) -> float:
-        m = re.search(r"(\d+(?:[.,]\d+)?)", text or "")
-        if not m:
-            return 0.0
-        return float(m.group(1).replace(",", "."))
+    def _lang_code(raw: str) -> str:
+        """MangaPlus envia codigos curtos (eng, esp, ptb...) ou cheios."""
+        m = {
+            "eng": "en", "english": "en", "0": "en",
+            "esp": "es-la", "spanish": "es-la", "1": "es-la",
+            "ptb": "pt-br", "portuguese": "pt-br", "5": "pt-br",
+            "fra": "fr", "french": "fr", "2": "fr",
+            "ind": "id", "indonesian": "id", "3": "id",
+            "vie": "vi", "vietnamese": "vi", "8": "vi",
+            "tha": "th", "thai": "th", "7": "th",
+            "rus": "ru", "russian": "ru", "4": "ru",
+        }
+        return m.get(raw, raw or "en")

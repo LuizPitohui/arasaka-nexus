@@ -25,22 +25,36 @@ logger = logging.getLogger(__name__)
 
 
 # Mapa estático: id → "module:Class". Adicionar um provider novo é uma linha aqui.
+#
+# Status atual de cada provider (verificado em 2026-05-01):
+#   ✅ mangadex    — JSON API oficial, sem rate-limit issues, totalmente funcional
+#   ✅ mangaplus   — JSON API oficial Shueisha (jumpg-webapi), sem anti-bot
+#   ⚠️  asurascans — site migrou pra Astro em asurascans.com com paths novos;
+#                    provider antigo nao parseia o HTML. Precisa reescrita.
+#   ❌ comick      — DNS sinkholed em redes que filtram agregadores; canonical
+#                    (comick.dev) atras de Cloudflare IUAM (anti-bot). Exige
+#                    cloudscraper/headless pra passar.
+#   ❌ tsuki       — anti-bot JS (window.location.replace token). Mesmo padrao.
+#   ❌ bato        — TCP block (provedor pode bloquear). ConnectTimeout.
+#   ❌ lermanga    — DNS sinkhole (resolve para 127.0.0.1).
+#   ❌ brmangas    — dominio parqueado (brmangas.net foi vendido).
+#   ❌ goldenmangas — dominio parqueado (goldenmangas.top foi vendido).
 PROVIDER_MAP: dict[str, str] = {
-    # Top-tier (qualidade de conteúdo + cobertura)
     "mangadex": "sources.providers.mangadex:MangaDexSource",
+    "mangaplus": "sources.providers.mangaplus:MangaPlusSource",
+    # Os abaixo estao no mapa para que SOURCES_ENABLED possa habilita-los
+    # quando o ambiente permitir, mas estao fora do default.
     "comick": "sources.providers.comick:ComickSource",
     "tsuki": "sources.providers.tsuki:TsukiSource",
     "bato": "sources.providers.bato:BatoSource",
     "asurascans": "sources.providers.asurascans:AsuraScansSource",
-    "mangaplus": "sources.providers.mangaplus:MangaPlusSource",
-    # Madara genéricos (BR)
     "lermanga": "sources.providers.lermanga:LermangaSource",
     "goldenmangas": "sources.providers.goldenmangas:GoldenmangasSource",
     "brmangas": "sources.providers.brmangas:BrmangasSource",
 }
 
 
-_DEFAULT_ENABLED = ["mangadex", "comick"]
+_DEFAULT_ENABLED = ["mangadex", "mangaplus"]
 
 _instances: dict[str, BaseSource] = {}
 

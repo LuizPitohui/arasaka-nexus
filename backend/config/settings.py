@@ -246,7 +246,7 @@ MANGADEX_REQUEST_TIMEOUT = int(os.environ.get("MANGADEX_REQUEST_TIMEOUT", "20"))
 #   - update do endpoint (mangaplus mudou o path);
 #   - dominio nao parqueado (brmangas/goldenmangas voltaram a ficar parked).
 # Ative via env var SOURCES_ENABLED conforme o ambiente permite.
-SOURCES_ENABLED = _env_list("SOURCES_ENABLED", "mangadex")
+SOURCES_ENABLED = _env_list("SOURCES_ENABLED", "mangadex,mangaplus")
 # Intervalo mínimo entre probes ativos por fonte (em segundos).
 SOURCES_HEALTHCHECK_INTERVAL_SECONDS = int(
     os.environ.get("SOURCES_HEALTHCHECK_INTERVAL_SECONDS", "300")
