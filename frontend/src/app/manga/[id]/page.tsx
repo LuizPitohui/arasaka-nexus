@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
 import { AdultPageGate, useAdultReveal } from '@/components/AdultLock';
-import { LanguageBadge } from '@/components/LanguageBadge';
+import { LanguageBadge, getLangSpec } from '@/components/LanguageBadge';
 import { isAdultRating } from '@/lib/types';
 
 type ListSummary = {
@@ -43,35 +43,52 @@ type Chapter = {
 };
 
 type Paginated<T> = { results: T[] } | T[];
+type LangStat = { code: string; count: number };
+
+const LANG_PREF_KEY = 'nexus_chapter_lang';
 
 export default function MangaDetails() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [manga, setManga] = useState<MangaDetail | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [langs, setLangs] = useState<LangStat[]>([]);
+  const [activeLang, setActiveLang] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [chaptersLoading, setChaptersLoading] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
   const authed =
     typeof window !== 'undefined' && Boolean(tokenStore.getAccess());
 
+  // Detalhes do manga + lista de idiomas disponiveis (1 unico round-trip cada).
   useEffect(() => {
     if (!params?.id) return;
     let cancelled = false;
     setLoading(true);
     Promise.all([
       api.get<MangaDetail>(`/mangas/${params.id}/`, { auth: false }),
-      api.get<Paginated<Chapter>>(`/chapters/?manga=${params.id}`, {
+      api.get<LangStat[]>(`/chapter-languages/?manga=${params.id}`, {
         auth: false,
       }),
     ])
-      .then(([mangaData, chaptersData]) => {
+      .then(([mangaData, langsData]) => {
         if (cancelled) return;
         setManga(mangaData);
-        const list = Array.isArray(chaptersData)
-          ? chaptersData
-          : chaptersData.results ?? [];
-        setChapters(list);
+        const list = Array.isArray(langsData) ? langsData : [];
+        setLangs(list);
+        // Decide o idioma inicial: preferencia salva → pt-br → en → mais popular.
+        const saved =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(LANG_PREF_KEY)
+            : null;
+        const has = (code: string) => list.some((l) => l.code === code);
+        const initial =
+          (saved && has(saved) && saved) ||
+          (has('pt-br') && 'pt-br') ||
+          (has('en') && 'en') ||
+          (list[0]?.code ?? '');
+        setActiveLang(initial);
       })
       .catch((err) => console.error(err))
       .finally(() => {
@@ -81,6 +98,44 @@ export default function MangaDetails() {
       cancelled = true;
     };
   }, [params?.id]);
+
+  // Lista completa de capitulos da lingua ativa (uma unica chamada, sem
+  // paginacao — backend honra ?paginated=false). Refaz quando troca o idioma.
+  useEffect(() => {
+    if (!params?.id) return;
+    let cancelled = false;
+    setChaptersLoading(true);
+    const url = `/chapters/?manga=${params.id}&paginated=false${
+      activeLang ? `&lang=${encodeURIComponent(activeLang)}` : ''
+    }`;
+    api
+      .get<Paginated<Chapter>>(url, { auth: false })
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : data.results ?? [];
+        // Garante ordenacao desc por numero (do mais novo pro mais antigo).
+        list.sort((a, b) => Number(b.number) - Number(a.number));
+        setChapters(list);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error(err);
+        setChapters([]);
+      })
+      .finally(() => {
+        if (!cancelled) setChaptersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [params?.id, activeLang]);
+
+  const onPickLang = (code: string) => {
+    setActiveLang(code);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(LANG_PREF_KEY, code);
+    }
+  };
 
   useEffect(() => {
     if (!params?.id || !authed) return;
@@ -144,6 +199,10 @@ export default function MangaDetails() {
       <MangaDetailBody
         manga={manga}
         chapters={chapters}
+        chaptersLoading={chaptersLoading}
+        langs={langs}
+        activeLang={activeLang}
+        onPickLang={onPickLang}
         params={params}
         router={router}
         authed={authed}
@@ -179,6 +238,10 @@ function AdultGate({
 type MangaDetailBodyProps = {
   manga: MangaDetail;
   chapters: Chapter[];
+  chaptersLoading: boolean;
+  langs: LangStat[];
+  activeLang: string;
+  onPickLang: (code: string) => void;
   params: { id: string } | null;
   router: ReturnType<typeof useRouter>;
   authed: boolean;
@@ -190,6 +253,10 @@ type MangaDetailBodyProps = {
 function MangaDetailBody({
   manga,
   chapters,
+  chaptersLoading,
+  langs,
+  activeLang,
+  onPickLang,
   params,
   router,
   authed,
@@ -336,7 +403,7 @@ function MangaDetailBody({
               />
               {chapters.length > 0 && (
                 <Link
-                  href={`/read/${chapters[0].id}`}
+                  href={`/read/${chapters[chapters.length - 1].id}`}
                   className="ml-auto mono inline-flex items-center gap-2 px-5 py-3 text-xs uppercase tracking-[0.3em] font-bold transition-colors"
                   style={{
                     background: 'var(--arasaka-red)',
@@ -356,88 +423,271 @@ function MangaDetailBody({
               )}
             </div>
 
-            <div className="flex items-center gap-3 mb-5">
-              <BookOpen
-                className="w-4 h-4"
-                style={{ color: 'var(--arasaka-red)' }}
-              />
-              <p className="kicker">// CHAPTERS_AVAILABLE</p>
-              <div
-                className="flex-1 h-px"
-                style={{ background: 'var(--border-faint)' }}
-              />
-              <span
-                className="mono text-[11px]"
-                style={{ color: 'var(--fg-muted)' }}
-              >
-                {chapters.length.toString().padStart(3, '0')}
-              </span>
-            </div>
+            <ChapterToolbar
+              langs={langs}
+              activeLang={activeLang}
+              onPickLang={onPickLang}
+              chapterCount={chapters.length}
+              chaptersLoading={chaptersLoading}
+            />
 
-            <div className="grid gap-1.5">
-              {chapters.length === 0 ? (
-                <div
-                  className="p-4 mono text-xs uppercase tracking-widest"
-                  style={{
-                    background: 'var(--bg-terminal)',
-                    border: '1px solid var(--border-faint)',
-                    color: 'var(--fg-muted)',
-                  }}
-                >
-                  // NO_CHAPTERS_SYNCED — system is fetching...
-                </div>
-              ) : (
-                chapters.map((chapter) => (
-                  <Link
-                    key={chapter.id}
-                    href={`/read/${chapter.id}`}
-                    className="flex items-center justify-between p-3.5 transition-all group"
-                    style={{
-                      background: 'var(--bg-terminal)',
-                      border: '1px solid var(--border-faint)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-                      e.currentTarget.style.background =
-                        'rgba(220,38,38,0.04)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor =
-                        'var(--border-faint)';
-                      e.currentTarget.style.background = 'var(--bg-terminal)';
-                    }}
-                  >
-                    <div className="flex items-center gap-4 min-w-0 flex-1">
-                      <span
-                        className="mono text-sm font-bold w-14 shrink-0"
-                        style={{ color: 'var(--arasaka-red)' }}
-                      >
-                        #{chapter.number.padStart(3, '0')}
-                      </span>
-                      <span
-                        className="text-sm truncate flex-1"
-                        style={{ color: 'var(--fg-secondary)' }}
-                      >
-                        {chapter.title || `Chapter ${chapter.number}`}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <LanguageBadge code={chapter.translated_language} />
-                      <span
-                        className="mono text-[10px] uppercase tracking-widest hidden sm:inline"
-                        style={{ color: 'var(--fg-muted)' }}
-                      >
-                        READ →
-                      </span>
-                    </div>
-                  </Link>
-                ))
-              )}
-            </div>
+            <ChapterList chapters={chapters} loading={chaptersLoading} />
           </div>
         </div>
       </div>
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chapter toolbar (language tabs + count)
+// ---------------------------------------------------------------------------
+function ChapterToolbar({
+  langs,
+  activeLang,
+  onPickLang,
+  chapterCount,
+  chaptersLoading,
+}: {
+  langs: LangStat[];
+  activeLang: string;
+  onPickLang: (code: string) => void;
+  chapterCount: number;
+  chaptersLoading: boolean;
+}) {
+  return (
+    <div className="mb-5">
+      <div className="flex items-center gap-3 mb-3">
+        <BookOpen className="w-4 h-4" style={{ color: 'var(--arasaka-red)' }} />
+        <p className="kicker">// CHAPTERS_AVAILABLE</p>
+        <div
+          className="flex-1 h-px"
+          style={{ background: 'var(--border-faint)' }}
+        />
+        <span
+          className="mono text-[11px] tabular-nums"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          {chaptersLoading ? '...' : String(chapterCount).padStart(3, '0')}
+        </span>
+      </div>
+      {langs.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          {langs.map((l) => {
+            const active = l.code === activeLang;
+            const spec = getLangSpec(l.code);
+            return (
+              <button
+                key={l.code}
+                type="button"
+                onClick={() => onPickLang(l.code)}
+                className="mono text-[10px] uppercase tracking-widest px-2.5 py-1.5 transition-colors flex items-center gap-1.5"
+                style={{
+                  background: active
+                    ? 'rgba(220,38,38,0.1)'
+                    : 'var(--bg-terminal)',
+                  border: active
+                    ? '1px solid var(--arasaka-red)'
+                    : '1px solid var(--border-faint)',
+                  color: active ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+                }}
+              >
+                <span aria-hidden style={{ fontSize: 13 }}>
+                  {spec?.flag ?? '🌐'}
+                </span>
+                <span>{spec?.label ?? l.code.toUpperCase()}</span>
+                <span
+                  className="tabular-nums"
+                  style={{ color: active ? 'var(--arasaka-red)' : 'var(--fg-muted)', opacity: 0.85 }}
+                >
+                  · {l.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chapter list with inline filter + scroll for long catalogues
+// ---------------------------------------------------------------------------
+function ChapterList({
+  chapters,
+  loading,
+}: {
+  chapters: Chapter[];
+  loading: boolean;
+}) {
+  const [filter, setFilter] = useState('');
+  const [order, setOrder] = useState<'desc' | 'asc'>('desc');
+
+  const filtered = chapters
+    .filter((c) => {
+      const f = filter.trim().toLowerCase();
+      if (!f) return true;
+      return (
+        String(c.number).includes(f) ||
+        (c.title ?? '').toLowerCase().includes(f)
+      );
+    })
+    .sort((a, b) =>
+      order === 'desc'
+        ? Number(b.number) - Number(a.number)
+        : Number(a.number) - Number(b.number),
+    );
+
+  if (loading && chapters.length === 0) {
+    return (
+      <div
+        className="p-4 mono text-xs uppercase tracking-widest text-center"
+        style={{
+          background: 'var(--bg-terminal)',
+          border: '1px solid var(--border-faint)',
+          color: 'var(--fg-muted)',
+        }}
+      >
+        // CARREGANDO_CAPÍTULOS...
+      </div>
+    );
+  }
+  if (chapters.length === 0) {
+    return (
+      <div
+        className="p-4 mono text-xs uppercase tracking-widest"
+        style={{
+          background: 'var(--bg-terminal)',
+          border: '1px solid var(--border-faint)',
+          color: 'var(--fg-muted)',
+        }}
+      >
+        // NO_CHAPTERS_IN_LANG — tente outro idioma na barra acima.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Filter row */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="// FILTRAR POR Nº OU TÍTULO"
+            className="w-full pl-3 pr-9 py-2 mono text-xs uppercase tracking-widest outline-none transition-all"
+            style={{
+              background: 'var(--bg-terminal)',
+              border: '1px solid var(--border-faint)',
+              color: 'var(--fg-primary)',
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+              e.currentTarget.style.boxShadow = 'var(--glow-red)';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-faint)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          />
+          {filter && (
+            <button
+              type="button"
+              onClick={() => setFilter('')}
+              aria-label="Limpar filtro"
+              className="absolute inset-y-0 right-2 flex items-center justify-center px-1 mono text-xs"
+              style={{ color: 'var(--fg-muted)' }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setOrder(order === 'desc' ? 'asc' : 'desc')}
+          className="mono text-[10px] uppercase tracking-widest px-3 py-2 transition-colors shrink-0"
+          style={{
+            background: 'var(--bg-terminal)',
+            border: '1px solid var(--border-faint)',
+            color: 'var(--fg-secondary)',
+          }}
+          title="Inverter ordem"
+        >
+          {order === 'desc' ? '▼ NEWEST' : '▲ OLDEST'}
+        </button>
+      </div>
+
+      {filtered.length === 0 && (
+        <div
+          className="p-4 mono text-xs uppercase tracking-widest text-center"
+          style={{
+            background: 'var(--bg-terminal)',
+            border: '1px solid var(--border-faint)',
+            color: 'var(--fg-muted)',
+          }}
+        >
+          // NULL_RESULT — nenhum capítulo bate com o filtro
+        </div>
+      )}
+
+      <div
+        className="grid gap-1.5"
+        style={{
+          // Para mangás com muitos capítulos, container scrollável evita
+          // página interminável. Threshold: >40 capítulos vira box scrollable.
+          maxHeight: chapters.length > 40 ? 600 : undefined,
+          overflowY: chapters.length > 40 ? 'auto' : undefined,
+          paddingRight: chapters.length > 40 ? 4 : undefined,
+        }}
+      >
+        {filtered.map((chapter) => (
+          <Link
+            key={chapter.id}
+            href={`/read/${chapter.id}`}
+            className="flex items-center justify-between p-3.5 transition-all group"
+            style={{
+              background: 'var(--bg-terminal)',
+              border: '1px solid var(--border-faint)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+              e.currentTarget.style.background = 'rgba(220,38,38,0.04)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-faint)';
+              e.currentTarget.style.background = 'var(--bg-terminal)';
+            }}
+          >
+            <div className="flex items-center gap-4 min-w-0 flex-1">
+              <span
+                className="mono text-sm font-bold w-14 shrink-0"
+                style={{ color: 'var(--arasaka-red)' }}
+              >
+                #{chapter.number.padStart(3, '0')}
+              </span>
+              <span
+                className="text-sm truncate flex-1"
+                style={{ color: 'var(--fg-secondary)' }}
+              >
+                {chapter.title || `Chapter ${chapter.number}`}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <LanguageBadge code={chapter.translated_language} />
+              <span
+                className="mono text-[10px] uppercase tracking-widest hidden sm:inline"
+                style={{ color: 'var(--fg-muted)' }}
+              >
+                READ →
+              </span>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 

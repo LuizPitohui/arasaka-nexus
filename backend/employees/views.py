@@ -243,7 +243,46 @@ class ChapterViewSet(viewsets.ModelViewSet):
         manga_id = self.request.query_params.get("manga")
         if manga_id is not None:
             queryset = queryset.filter(manga_id=manga_id)
+        lang = (self.request.query_params.get("lang") or "").strip().lower()
+        if lang:
+            queryset = queryset.filter(translated_language=lang)
         return queryset
+
+    def paginate_queryset(self, queryset):
+        # ?paginated=false ou ?paginated=0 → entrega tudo de uma vez. Ainda
+        # exigimos um filtro por mangá para nao despejar 50k linhas em um
+        # request anonimo. Util para a pagina de detalhe que mostra todos
+        # os capitulos com filtro local por idioma/numero.
+        flag = (self.request.query_params.get("paginated") or "").lower()
+        manga_id = self.request.query_params.get("manga")
+        if flag in ("0", "false", "no", "off") and manga_id:
+            return None
+        return super().paginate_queryset(queryset)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def chapter_languages(request):
+    """Returns the list of translated languages available for a given manga.
+
+    Resposta: [{"code": "pt-br", "count": 842}, {"code": "en", "count": 520}, ...]
+    Ordenado por count desc — frontend usa pra montar tabs e escolher default.
+    """
+    from django.db.models import Count
+
+    manga_id = request.query_params.get("manga")
+    if not manga_id:
+        return Response([])
+    rows = (
+        Chapter.objects.filter(manga_id=manga_id)
+        .exclude(translated_language="")
+        .values("translated_language")
+        .annotate(count=Count("id"))
+        .order_by("-count")
+    )
+    return Response(
+        [{"code": r["translated_language"], "count": r["count"]} for r in rows]
+    )
 
 
 # ----------------------------------------------------------------------
@@ -254,11 +293,13 @@ class ChapterViewSet(viewsets.ModelViewSet):
 def get_chapter_pages(request, chapter_id: int):
     chapter = get_object_or_404(Chapter, id=chapter_id)
 
-    siblings = list(
-        Chapter.objects.filter(manga_id=chapter.manga_id)
-        .order_by("number")
-        .values_list("id", flat=True)
-    )
+    # Mantemos o usuario na mesma lingua ao avancar/voltar capitulo. Quando a
+    # lingua atual eh desconhecida (registros antigos sem translated_language),
+    # caímos para listar todos para nao quebrar a navegacao.
+    siblings_qs = Chapter.objects.filter(manga_id=chapter.manga_id)
+    if chapter.translated_language:
+        siblings_qs = siblings_qs.filter(translated_language=chapter.translated_language)
+    siblings = list(siblings_qs.order_by("number").values_list("id", flat=True))
     try:
         idx = siblings.index(chapter.id)
     except ValueError:
