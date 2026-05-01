@@ -274,15 +274,28 @@ class MangaPlusSource(BaseSource):
 
     @staticmethod
     def _lang_code(raw: str) -> str:
-        """MangaPlus envia codigos curtos (eng, esp, ptb...) ou cheios."""
+        """MangaPlus envia codigos curtos (eng, esp, ptb), cheios (english,
+        portuguese_br) ou enums numericos (0..8). Normalizamos pra IETF."""
         m = {
+            # English
             "eng": "en", "english": "en", "0": "en",
-            "esp": "es-la", "spanish": "es-la", "1": "es-la",
-            "ptb": "pt-br", "portuguese": "pt-br", "5": "pt-br",
+            # Spanish (Latin America)
+            "esp": "es-la", "spanish": "es-la",
+            "spanish_la": "es-la", "spanish_419": "es-la", "1": "es-la",
+            # Portuguese (Brazil)
+            "ptb": "pt-br", "portuguese": "pt-br",
+            "portuguese_br": "pt-br", "5": "pt-br",
+            # French
             "fra": "fr", "french": "fr", "2": "fr",
+            # Indonesian
             "ind": "id", "indonesian": "id", "3": "id",
+            # Vietnamese
             "vie": "vi", "vietnamese": "vi", "8": "vi",
+            # Thai
             "tha": "th", "thai": "th", "7": "th",
+            # Russian
             "rus": "ru", "russian": "ru", "4": "ru",
+            # German
+            "ger": "de", "german": "de",
         }
         return m.get(raw, raw or "en")
