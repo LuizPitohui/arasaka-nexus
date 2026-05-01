@@ -33,8 +33,11 @@ RUN DJANGO_SECRET_KEY=build-time-only DJANGO_DEBUG=0 \
     REDIS_URL=redis://x:6379/1 \
     python manage.py collectstatic --noinput || true
 
-# Non-root
+# Non-root user + pre-create writable volumes so mounted volumes inherit perms.
+# (Docker bind-mounts root-own the mountpoint by default; pre-creating with the
+# right owner inside the image makes named volumes initialise correctly.)
 RUN useradd --system --create-home --uid 1001 django \
+  && mkdir -p /app/media/covers /app/media/chapter_pages /app/staticfiles \
   && chown -R django:django /app
 USER django
 
