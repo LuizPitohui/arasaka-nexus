@@ -225,8 +225,12 @@ def task_refresh_popular():
 def task_sync_followed_feeds():
     """Every 6h: refresh chapter feed for mangás that users care about.
 
-    Priority: mangás that have favorites or recent reading progress. Falls back
-    to "every active manga" only when nothing is followed yet.
+    Priority: mangás que tem favoritos ou progress recente. Roteia por
+    source_id:
+      - mangadex: usa MangaDexScanner.sync_chapters_for_manga
+      - mihon:    re-puxa do Suwayomi via SuwayomiSource.fetch_chapters
+                  e faz update_or_create dos Chapter rows
+      - outros:   ignora (nao implementado)
     """
     redis_client = _redis_for_locks()
     lock_key = "lock:scheduled_sync_followed_feeds"
@@ -239,37 +243,86 @@ def task_sync_followed_feeds():
             .values_list("id", flat=True)
             .distinct()
         )
-        # Try to also include recently-read mangás without requiring an import.
         try:
-            from accounts.models import ReadingProgress  # local import to avoid cycle
+            from accounts.models import ReadingProgress
             recent = (
                 ReadingProgress.objects.values_list("chapter__manga_id", flat=True)
                 .distinct()
             )
             followed_ids.update(recent)
-        except Exception:  # pragma: no cover — accounts app must be installed
+        except Exception:  # pragma: no cover
             logger.exception("Falha ao incluir mangás com progresso recente")
 
         if not followed_ids:
             logger.info("Nenhum mangá seguido — pulando sync_followed_feeds")
             return {"status": "noop"}
 
-        scanner = MangaDexScanner()
-        synced = 0
+        scanner = MangaDexScanner()  # lazy: só usado se houver mangadex follows
+        synced_mangadex = 0
+        synced_mihon = 0
+        skipped = 0
+
         for manga_id in followed_ids:
             manga = Manga.objects.filter(id=manga_id, is_active=True).first()
             if not manga or not manga.mangadex_id:
                 continue
-            try:
-                scanner.sync_chapters_for_manga(manga)
-                synced += 1
-            except RateLimitExceeded:
-                logger.warning("Rate limit atingido em sync_followed_feeds; abortando run")
-                break
-            except RequestException as exc:
-                logger.warning("Falha em %s: %s", manga.title, exc)
-                continue
-        return {"status": "ok", "synced": synced, "considered": len(followed_ids)}
+
+            if manga.source_id == "mangadex":
+                try:
+                    scanner.sync_chapters_for_manga(manga)
+                    synced_mangadex += 1
+                except RateLimitExceeded:
+                    logger.warning("Rate limit em sync_followed_feeds (mangadex); abortando")
+                    break
+                except RequestException as exc:
+                    logger.warning("Falha mangadex em %s: %s", manga.title, exc)
+                    continue
+            elif manga.source_id == "mihon":
+                # Re-puxa lista de capitulos via Suwayomi e atualiza local.
+                # Storage_id = "mihon:<inner>:<mid>"; o external_id pra
+                # SuwayomiSource e o sufixo apos "mihon:".
+                from sources import registry as sources_registry
+
+                src = sources_registry.get("mihon")
+                if not src or not getattr(src, "is_configured", False):
+                    skipped += 1
+                    continue
+                external_id = manga.mangadex_id
+                if external_id.startswith("mihon:"):
+                    external_id = external_id[len("mihon:"):]
+                try:
+                    chapters_dto = src.fetch_chapters(external_id)
+                except Exception as exc:
+                    logger.warning("Falha mihon em %s: %s", manga.title, exc)
+                    continue
+                from .models import Chapter as _Chapter
+                for cd in chapters_dto:
+                    chapter_storage_id = f"mihon:{cd.external_id}"
+                    try:
+                        chap_num = float(cd.number or 0)
+                    except (TypeError, ValueError):
+                        chap_num = 0.0
+                    _Chapter.objects.update_or_create(
+                        mangadex_id=chapter_storage_id,
+                        defaults={
+                            "manga": manga,
+                            "source_id": "mihon",
+                            "number": chap_num,
+                            "title": cd.title or "",
+                            "translated_language": (cd.language or "").lower(),
+                        },
+                    )
+                synced_mihon += 1
+            else:
+                skipped += 1
+
+        return {
+            "status": "ok",
+            "synced_mangadex": synced_mangadex,
+            "synced_mihon": synced_mihon,
+            "skipped": skipped,
+            "considered": len(followed_ids),
+        }
     finally:
         redis_client.delete(lock_key)
 
