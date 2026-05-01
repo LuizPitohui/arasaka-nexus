@@ -237,8 +237,16 @@ MANGADEX_REQUEST_TIMEOUT = int(os.environ.get("MANGADEX_REQUEST_TIMEOUT", "20"))
 # --- Sources (multi-fonte) ---
 # IDs habilitados em runtime. Cada um precisa estar mapeado em
 # `sources.registry.PROVIDER_MAP`. Pode ser sobrescrito via env var
-# (CSV: "lermanga,goldenmangas").
-SOURCES_ENABLED = _env_list("SOURCES_ENABLED", "mangadex,comick")
+# (CSV: "mangadex,comick,lermanga").
+#
+# Default conservador: só MangaDex. Os outros providers exigem ou:
+#   - resolução DNS limpa (comick/lermanga sao sinkholados em DNS familiar/
+#     corporativo);
+#   - bypass de Cloudflare anti-bot (comick.dev, asurascans);
+#   - update do endpoint (mangaplus mudou o path);
+#   - dominio nao parqueado (brmangas/goldenmangas voltaram a ficar parked).
+# Ative via env var SOURCES_ENABLED conforme o ambiente permite.
+SOURCES_ENABLED = _env_list("SOURCES_ENABLED", "mangadex")
 # Intervalo mínimo entre probes ativos por fonte (em segundos).
 SOURCES_HEALTHCHECK_INTERVAL_SECONDS = int(
     os.environ.get("SOURCES_HEALTHCHECK_INTERVAL_SECONDS", "300")
