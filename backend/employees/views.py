@@ -181,13 +181,16 @@ class MangaViewSet(viewsets.ModelViewSet):
         if ordering in {"popular"}:
             qs = qs.annotate(favorites_count=Count("favorited_by", distinct=True))
         if ordering in {"latest_chapter"}:
-            from django.db.models.functions import Coalesce
-            # Coalesce(published_at, release_date): prefer data real upstream;
-            # fallback pra data de insercao quando o capitulo ainda nao foi
-            # backfilled com a data verdadeira.
+            from django.db.models.functions import Greatest
+            # Greatest(published_at, release_date) por capitulo: pega a data
+            # mais recente entre publicacao real upstream e insercao no nosso
+            # DB. Garante que tanto novos chapters quanto recem-importados
+            # subam pro topo, e mangas estagnados afundem naturalmente.
+            # release_date e auto_now_add (nunca null), entao GREATEST nunca
+            # retorna NULL.
             qs = qs.annotate(
                 latest_chapter_at=Max(
-                    Coalesce("chapters__published_at", "chapters__release_date")
+                    Greatest("chapters__published_at", "chapters__release_date")
                 )
             )
 
@@ -211,13 +214,18 @@ class MangaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], permission_classes=[AllowAny])
     def latest(self, request):
-        from django.db.models.functions import Coalesce
+        from django.db.models.functions import Greatest
 
+        # Greatest(published_at, release_date): pega a "atividade mais recente"
+        # de cada capitulo (publicacao real upstream OU insercao no nosso DB,
+        # o que for maior). Mangas com cap novo sobem porque published_at sobe;
+        # mangas recem-importados sobem porque release_date sobe; mangas
+        # estagnados ficam na sua data verdadeira de ultima atividade.
         qs = (
             Manga.objects.filter(is_active=True)
             .annotate(
                 latest_chapter_at=Max(
-                    Coalesce("chapters__published_at", "chapters__release_date")
+                    Greatest("chapters__published_at", "chapters__release_date")
                 )
             )
             .filter(latest_chapter_at__isnull=False)
