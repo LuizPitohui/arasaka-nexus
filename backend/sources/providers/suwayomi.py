@@ -96,6 +96,13 @@ class SuwayomiSource(BaseSource):
         cache.set(_SOURCE_LIST_CACHE_KEY, rows, _SOURCE_LIST_TTL_SECONDS)
         return rows
 
+    def _source_name_map(self) -> dict[str, str]:
+        """Mapa id (str) -> displayName legível pro frontend."""
+        return {
+            str(s.get("id")): (s.get("displayName") or s.get("name") or str(s.get("id")))
+            for s in self._list_sources()
+        }
+
     def list_sources_public(self) -> list[dict]:
         """Wrapper público com shape estável pro endpoint admin."""
         return [

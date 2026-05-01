@@ -114,9 +114,17 @@ def _to_search_payload(dto: MangaDTO, src: BaseSource) -> dict:
         "status": (dto.status or "").upper() or "UNKNOWN",
     }
     # Mihon Network: external_id no formato "<inner_source_id>:<mangaId>".
-    # Expõe o nome da sub-fonte pro frontend mostrar (ex: "MIHON · Hunters").
+    # Resolve o nome humano da sub-fonte pelo mapa do SuwayomiSource.
     if src.id == "mihon" and ":" in dto.external_id:
-        payload["sub_source"] = dto.external_id.split(":", 1)[0]
+        inner = dto.external_id.split(":", 1)[0]
+        name_lookup = getattr(src, "_source_name_map", None)
+        if callable(name_lookup):
+            try:
+                payload["sub_source"] = name_lookup().get(inner, inner)
+            except Exception:
+                payload["sub_source"] = inner
+        else:
+            payload["sub_source"] = inner
     # Backwards-compat: o frontend usa `mangadex_id` para decidir o fluxo de
     # import. Só populamos quando a origem é o MangaDex.
     if src.id == "mangadex":
