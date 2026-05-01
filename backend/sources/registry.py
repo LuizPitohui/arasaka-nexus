@@ -52,14 +52,15 @@ PROVIDER_MAP: dict[str, str] = {
     # Reativaveis com trabalho — nao no default
     "asurascans": "sources.providers.asurascans:AsuraScansSource",
     "tsuki": "sources.providers.tsuki:TsukiSource",
-    # Scans BR via Madara — exigem FlareSolverr ativo + opt-in via SOURCES_ENABLED.
-    # Mihon-style: cobre os scanlators mais usados em PT-BR no app oficial.
-    "hunterscomics": "sources.providers.br_madara:HuntersComicsSource",
-    "luratoon": "sources.providers.br_madara:LuraToonSource",
-    "remangas": "sources.providers.br_madara:RemangasSource",
-    "lermangas": "sources.providers.br_madara:LermangasSource",
-    "sussytoons": "sources.providers.br_madara:SussyToonsSource",
-    "mediocretoons": "sources.providers.br_madara:MediocreToonsSource",
+    # NOTE: Scans BR (Hunters/Lura/Remangas/Lermangas/Sussy/Mediocre) foram
+    # implementadas em br_madara.py mas nao estao registradas aqui — em
+    # 2026-05-01 os dominios canonicos verificados estavam squatados,
+    # vendidos ou redirecionando para sites maliciosos. O ecossistema BR
+    # de scans muda dominio constantemente pra evitar DMCA. Manter isso
+    # operacional exigiria um processo de atualizacao continua de URLs
+    # similar ao que o Mihon/Tachiyomi faz com auto-update de extensoes.
+    # Provider infra (MadaraScraper + FlareSolverr opt-in) fica pronto
+    # pra ser ativado quando houver tempo de manter os endpoints.
 }
 
 

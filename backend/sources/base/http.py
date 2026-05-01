@@ -229,9 +229,28 @@ class BaseHTTPClient:
         return self.request("GET", path_or_url, endpoint=endpoint, **kwargs)
 
     def _log(self, **kwargs) -> None:
-        """Registra telemetria sem deixar o request principal cair se o DB falhar."""
+        """Registra telemetria sem deixar o request principal cair se o DB falhar.
+
+        Garante a existência da row em ``Source`` antes do insert do log. Sem
+        isso, o primeiro probe de uma fonte recém-registrada estoura
+        ForeignKeyViolation. Falha silenciosa em qualquer outro erro — esta
+        função NUNCA pode quebrar o request principal.
+        """
         try:
-            from sources.models import SourceHealthLog
+            from sources.models import Source, SourceHealthLog
+            from sources import registry
+
+            # get_or_create idempotente; first hit cria a row baseada no provider.
+            if not Source.objects.filter(id=self.source_id).exists():
+                src = registry.get(self.source_id)
+                defaults: dict = {
+                    "name": getattr(src, "name", self.source_id) if src else self.source_id,
+                    "base_url": getattr(src, "base_url", "") if src else "",
+                    "languages": list(getattr(src, "languages", []) or []) if src else [],
+                    "kind": getattr(src, "kind", "scraper") if src else "scraper",
+                    "is_active": True,
+                }
+                Source.objects.get_or_create(id=self.source_id, defaults=defaults)
 
             SourceHealthLog.objects.create(
                 source_id=self.source_id,
