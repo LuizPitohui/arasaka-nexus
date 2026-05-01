@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404
@@ -439,6 +440,23 @@ _PREVIEW_ALLOWED_HOSTS = {
 }
 
 
+def _is_safe_upstream_url(url: str, expected_prefix: str) -> bool:
+    """Defesa em profundidade contra SSRF nos proxies Mihon.
+
+    Mesmo que o Suwayomi esteja no nosso compose interno, validamos que a
+    URL retornada por ele aponta exatamente para a base esperada
+    (settings.SUWAYOMI_URL) — nao pra metadados de cloud (169.254.x),
+    loopback de outro processo, ou ranges privados arbitrarios.
+
+    expected_prefix deve ser settings.SUWAYOMI_URL (ja stripped de '/').
+    """
+    if not url or not expected_prefix:
+        return False
+    # Aceita exatamente prefix + '/' + qualquer path. Bloqueia
+    # 'http://suwayomi.evil.com' que comecaria com prefix sem o '/'.
+    return url.startswith(expected_prefix + "/")
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def proxy_cover_preview(request):
@@ -511,6 +529,14 @@ def proxy_mihon_cover(request, external_id: str):
         raise Http404("invalid manga id")
 
     upstream_url = f"{src_mihon.base_url}/api/v1/manga/{mid}/thumbnail"
+
+    # SSRF defense: URL e construida a partir de src_mihon.base_url
+    # (= settings.SUWAYOMI_URL). Validamos pra blindar caso a base seja
+    # alterada em runtime de forma indevida.
+    expected = (settings.SUWAYOMI_URL or "").rstrip("/")
+    if not _is_safe_upstream_url(upstream_url, expected):
+        raise Http404("invalid upstream")
+
     try:
         r = _requests.get(upstream_url, timeout=15, stream=True)
     except Exception as exc:
@@ -581,6 +607,14 @@ def proxy_mihon_image(request, chapter_id: int, page_index: int):
 
     url = pages[page_index].url
     page_headers = pages[page_index].headers or {}
+
+    # SSRF defense-in-depth: a URL DEVE apontar exatamente pro Suwayomi
+    # configurado. Caso o proprio Suwayomi seja comprometido e devolva
+    # uma URL apontando pra metadados de cloud (169.254.169.254), bloqueia.
+    expected = (settings.SUWAYOMI_URL or "").rstrip("/")
+    if not _is_safe_upstream_url(url, expected):
+        logger.warning("mihon proxy: URL suspeita rejeitada: %s", url[:200])
+        raise Http404("invalid upstream")
 
     try:
         r = _requests.get(url, timeout=30, stream=True, headers=page_headers)
