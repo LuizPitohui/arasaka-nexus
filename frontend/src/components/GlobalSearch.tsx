@@ -128,12 +128,13 @@ export function GlobalSearch() {
       return;
     }
     // MangaDex live: dispara import e navega quando concluir.
-    if (m.mangadex_id) {
+    if (m.source === 'mangadex' && m.mangadex_id) {
       setOpen(false);
       setMobileOpen(false);
       const loading = toast.loading('// IMPORTANDO...');
       try {
         const res = await api.post<{ manga_id: number }>('/import/', {
+          source: 'mangadex',
           mangadex_id: m.mangadex_id,
         });
         toast.dismiss(loading);
@@ -145,7 +146,26 @@ export function GlobalSearch() {
       }
       return;
     }
-    // Fontes externas sem import automatico ainda — sinaliza para o usuario.
+    // Mihon (Suwayomi): import via external_id no formato <inner>:<mid>.
+    if (m.source === 'mihon' && m.external_id) {
+      setOpen(false);
+      setMobileOpen(false);
+      const loading = toast.loading('// IMPORTANDO MIHON...');
+      try {
+        const res = await api.post<{ manga_id: number }>('/import/', {
+          source: 'mihon',
+          external_id: m.external_id,
+        });
+        toast.dismiss(loading);
+        if (res.manga_id) router.push(`/manga/${res.manga_id}`);
+      } catch (err) {
+        toast.dismiss(loading);
+        console.error(err);
+        toast.error('// IMPORT_FAIL — tente outra fonte');
+      }
+      return;
+    }
+    // Fontes externas sem import automatico ainda.
     if (!isImportableSource(m.source)) {
       toast.info(
         `Fonte "${(m.source ?? 'externa').toUpperCase()}" ainda não tem import automático.`,

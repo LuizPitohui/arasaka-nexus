@@ -17,8 +17,13 @@ class Manga(models.Model):
         ('HIATUS', 'Hiato'),
     ]
 
-    # Identificador Externo (O Elo com o MangaDex)
+    # Identificador Externo (O Elo com a fonte)
+    # Para mangadex: UUID puro (ex.: "abc-123-...")
+    # Para mihon:   prefixado "mihon:<inner_source_id>:<suwayomi_manga_id>"
     mangadex_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    # Origem do mangá. Define o fluxo do reader (LOCAL / MANGADEX_STREAM /
+    # MIHON_STREAM) e qual cliente buscar metadados/páginas.
+    source_id = models.CharField(max_length=20, default="mangadex", db_index=True)
 
     title = models.CharField(max_length=255)
     alternative_title = models.CharField(max_length=255, blank=True, null=True)
@@ -66,8 +71,11 @@ class Manga(models.Model):
 
 class Chapter(models.Model):
     manga = models.ForeignKey(Manga, on_delete=models.CASCADE, related_name='chapters')
-    # NOVO CAMPO DE RASTREIO:
+    # External id na fonte. Para mangadex e UUID; para mihon e o chapterId
+    # interno do Suwayomi (string numerica).
     mangadex_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    # Denormalizado de Manga.source_id pra branch rapido no reader.
+    source_id = models.CharField(max_length=20, default="mangadex", db_index=True)
 
     number = models.DecimalField(max_digits=6, decimal_places=1)
     title = models.CharField(max_length=255, blank=True, null=True)

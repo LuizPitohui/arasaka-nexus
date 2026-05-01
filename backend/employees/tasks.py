@@ -30,6 +30,94 @@ def _redis_for_locks() -> redis.Redis:
 
 @shared_task(
     bind=True,
+    name="employees.import_mihon_manga",
+    max_retries=2,
+)
+def task_import_mihon_manga(self, external_id: str) -> dict:
+    """Importa metadados + lista de capitulos de uma obra Mihon (via Suwayomi).
+
+    `external_id` no formato "<inner_source_id>:<suwayomi_manga_id>". Persiste
+    como Manga(source_id="mihon", mangadex_id=f"mihon:{external_id}") para nao
+    colidir com UUIDs do MangaDex e permitir lookups rapidos.
+    """
+    from sources import registry as sources_registry
+
+    src = sources_registry.get("mihon")
+    if src is None or not getattr(src, "is_configured", False):
+        return {"status": "error", "reason": "mihon-not-configured"}
+
+    storage_id = f"mihon:{external_id}"
+
+    try:
+        manga_dto = src.fetch_manga(external_id)
+    except Exception as exc:
+        logger.exception("import_mihon_manga: fetch_manga falhou para %s", external_id)
+        return {"status": "error", "reason": str(exc)[:200]}
+
+    if not manga_dto or not manga_dto.title or manga_dto.title == "(não encontrado)":
+        return {"status": "not_found", "external_id": external_id}
+
+    # Normaliza status pra choices do nosso Manga (ONGOING / COMPLETED / HIATUS)
+    status_map = {"ongoing": "ONGOING", "completed": "COMPLETED", "hiatus": "HIATUS"}
+    chapter_status = status_map.get((manga_dto.status or "").lower(), "ONGOING")
+
+    rating_choices = {"safe", "suggestive", "erotica", "pornographic"}
+    cr = (manga_dto.content_rating or "safe").lower()
+    if cr not in rating_choices:
+        cr = "safe"
+
+    manga, created = Manga.objects.update_or_create(
+        mangadex_id=storage_id,
+        defaults={
+            "source_id": "mihon",
+            "title": manga_dto.title,
+            "alternative_title": "",
+            "description": manga_dto.description or "",
+            "cover": manga_dto.cover_url or "",
+            "author": manga_dto.author or "Desconhecido",
+            "status": chapter_status,
+            "content_rating": cr,
+            "is_active": True,
+        },
+    )
+
+    try:
+        chapters_dto = src.fetch_chapters(external_id)
+    except Exception as exc:
+        logger.exception("import_mihon_manga: fetch_chapters falhou para %s", external_id)
+        return {"status": "partial", "manga_id": manga.id, "reason": str(exc)[:200]}
+
+    synced = 0
+    for cd in chapters_dto:
+        # Suwayomi chapter ids são int convertidos pra str. Prefixamos pra evitar
+        # colisão com UUIDs MangaDex no campo único `mangadex_id`.
+        chapter_storage_id = f"mihon:{cd.external_id}"
+        try:
+            chap_num = float(cd.number or 0)
+        except (TypeError, ValueError):
+            chap_num = 0.0
+        Chapter.objects.update_or_create(
+            mangadex_id=chapter_storage_id,
+            defaults={
+                "manga": manga,
+                "source_id": "mihon",
+                "number": chap_num,
+                "title": cd.title or "",
+                "translated_language": (cd.language or "").lower(),
+            },
+        )
+        synced += 1
+
+    return {
+        "status": "ok",
+        "manga_id": manga.id,
+        "chapters_synced": synced,
+        "created": created,
+    }
+
+
+@shared_task(
+    bind=True,
     name="employees.import_manga_chapters",
     autoretry_for=(),  # We handle retries explicitly so we can read Retry-After.
     max_retries=4,

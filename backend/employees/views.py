@@ -67,7 +67,7 @@ from .serializers import (
 )
 from .mangadex_client import get_client
 from .services import get_mangadex_pages
-from .tasks import task_import_manga_chapters, task_seed_initial_library
+from .tasks import task_import_manga_chapters, task_import_mihon_manga, task_seed_initial_library
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +316,32 @@ def get_chapter_pages(request, chapter_id: int):
     local_images = ChapterImage.objects.filter(chapter=chapter).order_by("order")
     if local_images.exists():
         pages = ChapterImageSerializer(local_images, many=True).data
+    elif chapter.source_id == "mihon":
+        # Mihon flow: paginas vem do Suwayomi sob demanda. URLs sao proxiadas
+        # via /api/cdn/mihon/<chapter_id>/<page_index>/ pra:
+        #   1. Cloudflare cachear no edge (24h por (chapter,page))
+        #   2. Esconder o Suwayomi interno do publico
+        from sources import registry as sources_registry
+
+        src_mihon = sources_registry.get("mihon")
+        if src_mihon and getattr(src_mihon, "is_configured", False):
+            source = "MIHON_STREAM"
+            # Tira o prefixo "mihon:" pra obter o chapterId interno do Suwayomi.
+            external_id = chapter.mangadex_id or ""
+            inner_chapter_id = external_id[len("mihon:"):] if external_id.startswith("mihon:") else external_id
+            try:
+                page_dtos = src_mihon.fetch_pages(inner_chapter_id)
+            except Exception:
+                page_dtos = []
+            pages = [
+                {
+                    "id": p.index,
+                    "image": f"/api/cdn/mihon/{chapter.id}/{p.index}/",
+                    "image_saver": None,
+                    "order": p.index,
+                }
+                for p in page_dtos
+            ]
     elif chapter.mangadex_id:
         source = "MANGADEX_STREAM"
         pages = get_mangadex_pages(
@@ -414,6 +440,62 @@ def proxy_cover_preview(request):
     content_type = r.headers.get("Content-Type", "image/jpeg")
     response = StreamingHttpResponse(
         r.iter_content(chunk_size=32 * 1024),
+        content_type=content_type,
+    )
+    response["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    if cl := r.headers.get("Content-Length"):
+        response["Content-Length"] = cl
+    return response
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def proxy_mihon_image(request, chapter_id: int, page_index: int):
+    """Stream uma página de capítulo Mihon via Suwayomi.
+
+    Mesmo padrão do `proxy_chapter_image` (MangaDex): pega URL fresca,
+    streama via StreamingHttpResponse, headers de cache pro Cloudflare
+    cachear no edge.
+    """
+    from sources import registry as sources_registry
+
+    chapter = Chapter.objects.filter(id=chapter_id, source_id="mihon").only("mangadex_id").first()
+    if not chapter or not chapter.mangadex_id:
+        raise Http404("chapter not found")
+
+    src_mihon = sources_registry.get("mihon")
+    if not src_mihon or not getattr(src_mihon, "is_configured", False):
+        raise Http404("mihon not configured")
+
+    inner_chapter_id = chapter.mangadex_id
+    if inner_chapter_id.startswith("mihon:"):
+        inner_chapter_id = inner_chapter_id[len("mihon:"):]
+
+    try:
+        pages = src_mihon.fetch_pages(inner_chapter_id)
+    except Exception as exc:
+        logger.warning("mihon proxy fetch_pages falhou: %s", exc)
+        raise Http404("upstream unavailable")
+
+    if page_index >= len(pages):
+        raise Http404("page out of range")
+
+    url = pages[page_index].url
+    page_headers = pages[page_index].headers or {}
+
+    try:
+        r = _requests.get(url, timeout=30, stream=True, headers=page_headers)
+    except Exception as exc:
+        logger.warning("mihon proxy stream falhou (%s): %s", url, exc)
+        raise Http404("upstream unavailable")
+
+    if r.status_code != 200:
+        r.close()
+        return HttpResponse(status=r.status_code)
+
+    content_type = r.headers.get("Content-Type", "image/jpeg")
+    response = StreamingHttpResponse(
+        r.iter_content(chunk_size=64 * 1024),
         content_type=content_type,
     )
     response["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
@@ -533,13 +615,66 @@ def search_mangas(request):
 @permission_classes([IsAuthenticated])
 @throttle_classes([ImportThrottle])
 def import_manga(request):
-    dex_id = (request.data or {}).get("mangadex_id")
+    """Dispatch import por fonte. Aceita:
+
+    - {"mangadex_id": "abc-uuid"}  → import classico MangaDex
+    - {"source": "mihon", "external_id": "<inner>:<mid>"} → import via Suwayomi
+
+    O fluxo Mihon roda sincrono (rapido) porque o Suwayomi ja tem metadados
+    em memoria. O do MangaDex segue assincrono via Celery.
+    """
+    payload = request.data or {}
+    source = (payload.get("source") or "mangadex").lower()
+
+    # ----------------- MIHON -----------------
+    if source == "mihon":
+        external_id = payload.get("external_id") or payload.get("id") or ""
+        if not external_id or ":" not in external_id:
+            return Response(
+                {"error": "external_id obrigatorio no formato '<inner>:<mid>'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        storage_id = f"mihon:{external_id}"
+        existing = Manga.objects.filter(mangadex_id=storage_id, source_id="mihon").first()
+        if existing:
+            # Re-sync em background, mas devolve o manga_id pra o frontend ja
+            # navegar imediatamente.
+            task_import_mihon_manga.delay(external_id)
+            return Response(
+                {
+                    "status": "processing",
+                    "manga_id": existing.id,
+                    "created": False,
+                    "message": "Atualizacao agendada.",
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        # Primeiro import — roda sincrono pra termos manga_id na resposta.
+        result = task_import_mihon_manga(external_id)
+        if result.get("status") == "ok":
+            return Response(
+                {
+                    "status": "ok",
+                    "manga_id": result.get("manga_id"),
+                    "created": result.get("created", True),
+                    "chapters_synced": result.get("chapters_synced", 0),
+                    "message": "Importado.",
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(
+            {"status": result.get("status"), "reason": result.get("reason", "")},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    # ----------------- MANGADEX (default) -----------------
+    dex_id = payload.get("mangadex_id") or payload.get("external_id")
     if not dex_id:
         return Response(
             {"error": "mangadex_id é obrigatório"}, status=status.HTTP_400_BAD_REQUEST
         )
 
-    existing = Manga.objects.filter(mangadex_id=dex_id).first()
+    existing = Manga.objects.filter(mangadex_id=dex_id, source_id="mangadex").first()
     task = task_import_manga_chapters.delay(dex_id)
 
     return Response(

@@ -12,6 +12,7 @@ from .views import (
     import_manga,
     proxy_chapter_image,
     proxy_cover_preview,
+    proxy_mihon_image,
     search_mangas,
 )
 
@@ -28,6 +29,11 @@ urlpatterns = [
         "cdn/chapter/<int:chapter_id>/<int:page_index>/",
         proxy_chapter_image,
         name="cdn_chapter_image",
+    ),
+    path(
+        "cdn/mihon/<int:chapter_id>/<int:page_index>/",
+        proxy_mihon_image,
+        name="cdn_mihon_image",
     ),
     path("cdn/preview/", proxy_cover_preview, name="cdn_cover_preview"),
     path("search/", search_mangas, name="search_mangas"),

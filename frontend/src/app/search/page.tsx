@@ -66,10 +66,11 @@ function SearchContent() {
       router.push(`/manga/${m.id}`);
       return;
     }
-    if (m.mangadex_id) {
+    if (m.source === 'mangadex' && m.mangadex_id) {
       const loading = toast.loading('// IMPORTANDO...');
       try {
         const res = await api.post<{ manga_id: number }>('/import/', {
+          source: 'mangadex',
           mangadex_id: m.mangadex_id,
         });
         toast.dismiss(loading);
@@ -78,6 +79,22 @@ function SearchContent() {
         toast.dismiss(loading);
         console.error(err);
         toast.error('// IMPORT_FAIL — tente de novo');
+      }
+      return;
+    }
+    if (m.source === 'mihon' && m.external_id) {
+      const loading = toast.loading('// IMPORTANDO MIHON...');
+      try {
+        const res = await api.post<{ manga_id: number }>('/import/', {
+          source: 'mihon',
+          external_id: m.external_id,
+        });
+        toast.dismiss(loading);
+        if (res.manga_id) router.push(`/manga/${res.manga_id}`);
+      } catch (err) {
+        toast.dismiss(loading);
+        console.error(err);
+        toast.error('// IMPORT_FAIL — tente outra fonte');
       }
       return;
     }

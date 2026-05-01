@@ -104,7 +104,7 @@ export function getSourceSpec(source: string | undefined | null): SourceSpec {
  * them in the search shouldn't pretend they'll import like MangaDex.
  */
 export function isImportableSource(source: string | undefined | null): boolean {
-  return source === 'mangadex' || source === 'local';
+  return source === 'mangadex' || source === 'local' || source === 'mihon';
 }
 
 export function SourceBadge({
