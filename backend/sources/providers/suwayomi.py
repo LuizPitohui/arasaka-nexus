@@ -117,6 +117,51 @@ class SuwayomiSource(BaseSource):
         ]
 
     # ------------------------------------------------------------------
+    # Browse (popular / latest) — usado em backfill e pull noturno
+    # ------------------------------------------------------------------
+    def browse(
+        self,
+        inner_source_id: str,
+        *,
+        kind: str = "popular",
+        page: int = 1,
+    ) -> tuple[list[MangaDTO], bool]:
+        """Pagina o catalogo de uma extensao Mihon.
+
+        kind: 'popular' ou 'latest'
+        Retorna: (lista_de_dtos, has_next_page)
+        """
+        if not self.is_configured:
+            return [], False
+        path = f"/api/v1/source/{quote(str(inner_source_id), safe='')}/{kind}/{page}"
+        data = self._get(path)
+        if not isinstance(data, dict):
+            return [], False
+        items = data.get("mangaList") or []
+        has_next = bool(data.get("hasNextPage"))
+        out: list[MangaDTO] = []
+        for m in items:
+            mid = m.get("id")
+            if mid is None:
+                continue
+            cover = m.get("thumbnailUrl") or ""
+            if cover.startswith("/"):
+                cover = f"{self.base_url}{cover}"
+            out.append(
+                MangaDTO(
+                    external_id=f"{inner_source_id}:{mid}",
+                    title=m.get("title") or "(sem título)",
+                    url=m.get("realUrl") or "",
+                    cover_url=cover,
+                    description=m.get("description") or "",
+                    author=m.get("author") or "",
+                    status=self._map_status(m.get("status")),
+                    languages=[],
+                )
+            )
+        return out, has_next
+
+    # ------------------------------------------------------------------
     # Search (fan-out paralelo nas extensões instaladas)
     # ------------------------------------------------------------------
     def search(self, query: str, page: int = 1) -> list[MangaDTO]:

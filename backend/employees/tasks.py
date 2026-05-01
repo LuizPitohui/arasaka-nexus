@@ -28,36 +28,18 @@ def _redis_for_locks() -> redis.Redis:
     return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
-@shared_task(
-    bind=True,
-    name="employees.import_mihon_manga",
-    max_retries=2,
-)
-def task_import_mihon_manga(self, external_id: str) -> dict:
-    """Importa metadados + lista de capitulos de uma obra Mihon (via Suwayomi).
+def _persist_mihon_manga(manga_dto, *, fetch_chapters_for: str | None = None) -> tuple["Manga", bool, int]:
+    """Cria/atualiza Manga + Chapters a partir de um MangaDTO Mihon.
 
-    `external_id` no formato "<inner_source_id>:<suwayomi_manga_id>". Persiste
-    como Manga(source_id="mihon", mangadex_id=f"mihon:{external_id}") para nao
-    colidir com UUIDs do MangaDex e permitir lookups rapidos.
+    Retorna (manga, created, chapters_synced). Quando ``fetch_chapters_for`` é
+    passado (formato "<inner>:<mid>"), tambem busca capitulos via SuwayomiSource
+    e atualiza/cria as rows de Chapter; caso contrario so persiste metadados.
+
+    Helper compartilhado entre task_import_mihon_manga (1 obra),
+    task_mihon_pull_latest (top de cada extensao) e o command mihon_backfill.
     """
-    from sources import registry as sources_registry
+    storage_id = f"mihon:{manga_dto.external_id}"
 
-    src = sources_registry.get("mihon")
-    if src is None or not getattr(src, "is_configured", False):
-        return {"status": "error", "reason": "mihon-not-configured"}
-
-    storage_id = f"mihon:{external_id}"
-
-    try:
-        manga_dto = src.fetch_manga(external_id)
-    except Exception as exc:
-        logger.exception("import_mihon_manga: fetch_manga falhou para %s", external_id)
-        return {"status": "error", "reason": str(exc)[:200]}
-
-    if not manga_dto or not manga_dto.title or manga_dto.title == "(não encontrado)":
-        return {"status": "not_found", "external_id": external_id}
-
-    # Normaliza status pra choices do nosso Manga (ONGOING / COMPLETED / HIATUS)
     status_map = {"ongoing": "ONGOING", "completed": "COMPLETED", "hiatus": "HIATUS"}
     chapter_status = status_map.get((manga_dto.status or "").lower(), "ONGOING")
 
@@ -81,32 +63,66 @@ def task_import_mihon_manga(self, external_id: str) -> dict:
         },
     )
 
-    try:
-        chapters_dto = src.fetch_chapters(external_id)
-    except Exception as exc:
-        logger.exception("import_mihon_manga: fetch_chapters falhou para %s", external_id)
-        return {"status": "partial", "manga_id": manga.id, "reason": str(exc)[:200]}
+    chapters_synced = 0
+    if fetch_chapters_for:
+        from sources import registry as sources_registry
 
-    synced = 0
-    for cd in chapters_dto:
-        # Suwayomi chapter ids são int convertidos pra str. Prefixamos pra evitar
-        # colisão com UUIDs MangaDex no campo único `mangadex_id`.
-        chapter_storage_id = f"mihon:{cd.external_id}"
+        src = sources_registry.get("mihon")
+        if src is None or not getattr(src, "is_configured", False):
+            return manga, created, 0
         try:
-            chap_num = float(cd.number or 0)
-        except (TypeError, ValueError):
-            chap_num = 0.0
-        Chapter.objects.update_or_create(
-            mangadex_id=chapter_storage_id,
-            defaults={
-                "manga": manga,
-                "source_id": "mihon",
-                "number": chap_num,
-                "title": cd.title or "",
-                "translated_language": (cd.language or "").lower(),
-            },
-        )
-        synced += 1
+            chapters_dto = src.fetch_chapters(fetch_chapters_for)
+        except Exception:
+            logger.exception("persist_mihon: fetch_chapters falhou para %s", fetch_chapters_for)
+            return manga, created, 0
+        for cd in chapters_dto:
+            chapter_storage_id = f"mihon:{cd.external_id}"
+            try:
+                chap_num = float(cd.number or 0)
+            except (TypeError, ValueError):
+                chap_num = 0.0
+            Chapter.objects.update_or_create(
+                mangadex_id=chapter_storage_id,
+                defaults={
+                    "manga": manga,
+                    "source_id": "mihon",
+                    "number": chap_num,
+                    "title": cd.title or "",
+                    "translated_language": (cd.language or "").lower(),
+                },
+            )
+            chapters_synced += 1
+    return manga, created, chapters_synced
+
+
+@shared_task(
+    bind=True,
+    name="employees.import_mihon_manga",
+    max_retries=2,
+)
+def task_import_mihon_manga(self, external_id: str) -> dict:
+    """Importa metadados + lista de capitulos de uma obra Mihon (via Suwayomi).
+
+    `external_id` no formato "<inner_source_id>:<suwayomi_manga_id>". Persiste
+    como Manga(source_id="mihon", mangadex_id=f"mihon:{external_id}") para nao
+    colidir com UUIDs do MangaDex e permitir lookups rapidos.
+    """
+    from sources import registry as sources_registry
+
+    src = sources_registry.get("mihon")
+    if src is None or not getattr(src, "is_configured", False):
+        return {"status": "error", "reason": "mihon-not-configured"}
+
+    try:
+        manga_dto = src.fetch_manga(external_id)
+    except Exception as exc:
+        logger.exception("import_mihon_manga: fetch_manga falhou para %s", external_id)
+        return {"status": "error", "reason": str(exc)[:200]}
+
+    if not manga_dto or not manga_dto.title or manga_dto.title == "(não encontrado)":
+        return {"status": "not_found", "external_id": external_id}
+
+    manga, created, synced = _persist_mihon_manga(manga_dto, fetch_chapters_for=external_id)
 
     return {
         "status": "ok",
@@ -114,6 +130,75 @@ def task_import_mihon_manga(self, external_id: str) -> dict:
         "chapters_synced": synced,
         "created": created,
     }
+
+
+@shared_task(name="employees.scheduled_pull_mihon_latest")
+def task_mihon_pull_latest(per_source_pages: int = 1, max_per_source: int = 25) -> dict:
+    """Cron noturno: top `latest` de cada extensao Mihon.
+
+    Para cada source instalado no Suwayomi:
+      - Pagina /latest (ate `per_source_pages` paginas)
+      - Pra cada hit:
+          * Se ja temos o Manga local -> dispara fetch_chapters (atualiza
+            capitulos novos)
+          * Se e novo -> cria Manga + lista de capitulos
+
+    Cap `max_per_source` evita explodir o DB se uma extensao ficar maluca.
+    Skipa silenciosamente se Suwayomi nao estiver configurado.
+    """
+    from sources import registry as sources_registry
+
+    src = sources_registry.get("mihon")
+    if src is None or not getattr(src, "is_configured", False):
+        return {"status": "skipped", "reason": "mihon-not-configured"}
+
+    try:
+        sources = src._list_sources()
+    except Exception:
+        sources = []
+    if not sources:
+        return {"status": "skipped", "reason": "no-sources"}
+
+    summary = {"sources_visited": 0, "new_mangas": 0, "updated_mangas": 0, "chapters_synced": 0}
+    for s in sources:
+        inner_id = str(s.get("id") or "")
+        if not inner_id or inner_id == "0":  # local source
+            continue
+        items_seen = 0
+        page = 1
+        while page <= per_source_pages and items_seen < max_per_source:
+            try:
+                dtos, has_next = src.browse(inner_id, kind="latest", page=page)
+            except Exception as exc:
+                logger.warning("mihon pull_latest browse falhou em %s p=%d: %s", inner_id, page, exc)
+                break
+            if not dtos:
+                break
+            for dto in dtos:
+                if items_seen >= max_per_source:
+                    break
+                items_seen += 1
+                # update_or_create: cria se nao existe, atualiza se existe.
+                # Capitulos so sao re-fetched pra cada hit (sao 25 max/extensao
+                # x N extensoes; ~125 fetch_chapters/noite, gerenciavel).
+                try:
+                    manga, created, chs = _persist_mihon_manga(
+                        dto, fetch_chapters_for=dto.external_id
+                    )
+                except Exception:
+                    logger.exception("mihon pull_latest: persist falhou %s", dto.external_id)
+                    continue
+                if created:
+                    summary["new_mangas"] += 1
+                else:
+                    summary["updated_mangas"] += 1
+                summary["chapters_synced"] += chs
+            if not has_next:
+                break
+            page += 1
+        summary["sources_visited"] += 1
+
+    return {"status": "ok", **summary}
 
 
 @shared_task(

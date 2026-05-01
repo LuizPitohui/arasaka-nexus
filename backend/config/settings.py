@@ -203,6 +203,13 @@ CELERY_BEAT_SCHEDULE = {
         # essa task só dispara probes para as que estão "vencidas".
         "schedule": crontab(minute="*"),
     },
+    "pull-mihon-latest": {
+        "task": "employees.scheduled_pull_mihon_latest",
+        # Diariamente 03:00 BRT. Pega top 25 latest de cada extensao Mihon
+        # instalada — refaz fetch_chapters de obras conhecidas e cria
+        # entradas pra mangás novos. ~5min de runtime.
+        "schedule": crontab(minute=0, hour=3),
+    },
 }
 
 # Storage limits for the on-demand page mirror
