@@ -100,6 +100,34 @@ services:
       - frontend
       - backend
 
+  # FlareSolverr — proxy headless Chrome para passar Cloudflare IUAM e
+  # outros JS challenges. Opt-in: NÃO sobe com `up -d` simples; precisa
+  # explicitar o profile pra ativar:
+  #
+  #     docker compose -f docker-compose.prod.yml --profile antibot up -d
+  #
+  # Quando o container está vivo, basta setar no .env.prod:
+  #     FLARESOLVERR_URL=http://flaresolverr:8191/v1
+  # e dar restart no `backend` + `celery` pra o BaseHTTPClient começar a
+  # rotear as fontes opt-in (USE_FLARESOLVERR=True na subclasse).
+  #
+  # Custo: ~2GB RAM em idle, +1.5-3s na primeira request por origem.
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:v3.3.21
+    container_name: nexus-flaresolverr
+    restart: unless-stopped
+    profiles: ["antibot"]
+    environment:
+      LOG_LEVEL: info
+      LOG_HTML: "false"
+      CAPTCHA_SOLVER: none
+      TZ: America/Sao_Paulo
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8191/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   media:
   static:

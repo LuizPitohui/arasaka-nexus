@@ -252,6 +252,14 @@ SOURCES_HEALTHCHECK_INTERVAL_SECONDS = int(
     os.environ.get("SOURCES_HEALTHCHECK_INTERVAL_SECONDS", "300")
 )
 
+# FlareSolverr — proxy headless Chrome para passar Cloudflare IUAM e similar.
+# Vazio = desabilitado (default). Quando habilitado, o BaseHTTPClient roteia
+# os providers que setam USE_FLARESOLVERR=True por aqui. Sobe o servico com:
+#     docker compose -f docker-compose.prod.yml --profile antibot up -d
+# e depois ajusta a env:
+#     FLARESOLVERR_URL=http://flaresolverr:8191/v1
+FLARESOLVERR_URL = os.environ.get("FLARESOLVERR_URL", "")
+
 # --- Logging ---
 LOGGING = {
     "version": 1,

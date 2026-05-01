@@ -56,6 +56,11 @@ class MadaraScraper(BaseSource):
     SEL_CHAPTER_LINK = "a"
     SEL_PAGE_IMG = "img.wp-manga-chapter-img, .reading-content img"
 
+    # Quando True, o BaseHTTPClient roteia requests por FlareSolverr (se a env
+    # FLARESOLVERR_URL estiver populada). Liga isso em sites que tem
+    # Cloudflare IUAM, DDoS-Guard, Sucuri, etc.
+    USE_FLARESOLVERR: bool = False
+
     def __init__(self):
         if not self.base_url:
             raise ValueError(f"{self.__class__.__name__}.base_url precisa ser definido")
@@ -63,6 +68,7 @@ class MadaraScraper(BaseSource):
             source_id=self.id,
             base_url=self.base_url,
             default_headers={"Referer": self.base_url + "/"},
+            use_flaresolverr=self.USE_FLARESOLVERR,
         )
 
     # --------------------------- search ---------------------------

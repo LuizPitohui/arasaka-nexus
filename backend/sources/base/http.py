@@ -3,19 +3,20 @@
 Responsabilidades:
 - Headers padrão (User-Agent identificável).
 - Retry leve com backoff em 5xx/erros de rede.
-- Telemetria: cada request gera uma linha em SourceHealthLog (origin=traffic),
-  alimentando o cálculo de saúde sem o autor do scraper precisar lembrar.
+- Telemetria: cada request gera uma linha em SourceHealthLog (origin=traffic).
+- Roteamento opt-in via FlareSolverr para passar Cloudflare IUAM / DDoS-Guard /
+  Sucuri e similares. Habilitado quando settings.FLARESOLVERR_URL está
+  populado E o provider seta `USE_FLARESOLVERR=True`.
 
 Não implementa rate limit aqui — o MangaDex já tem o seu próprio bucket no
-mangadex_client.py, e cada scraper pode definir o seu se precisar. Adicionar
-um bucket Redis genérico fica como evolução futura.
+mangadex_client.py, e cada scraper pode definir o seu se precisar.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 from django.conf import settings
@@ -37,6 +38,21 @@ class SourceHTTPError(Exception):
         self.error_class = error_class or self.__class__.__name__
 
 
+class _FakeResponse:
+    """Imitação mínima de `requests.Response` retornada pelo FlareSolverr."""
+
+    def __init__(self, status_code: int, text: str, headers: Optional[dict] = None):
+        self.status_code = status_code
+        self.text = text or ""
+        self.content = (text or "").encode("utf-8", errors="replace")
+        self.headers = headers or {}
+        self.url = ""
+
+    def json(self) -> Any:
+        import json as _json
+        return _json.loads(self.text)
+
+
 class BaseHTTPClient:
     """Wrapper fino sobre `requests` que registra telemetria por request."""
 
@@ -48,6 +64,7 @@ class BaseHTTPClient:
         user_agent: Optional[str] = None,
         default_headers: Optional[dict] = None,
         max_retries: int = 2,
+        use_flaresolverr: bool = False,
     ):
         self.source_id = source_id
         self.base_url = base_url.rstrip("/")
@@ -57,7 +74,83 @@ class BaseHTTPClient:
         self.session.headers.update({"User-Agent": user_agent or DEFAULT_USER_AGENT})
         if default_headers:
             self.session.headers.update(default_headers)
+        # FlareSolverr: ativo apenas quando o provider opta + a env está setada.
+        self.use_flaresolverr = bool(use_flaresolverr) and bool(
+            getattr(settings, "FLARESOLVERR_URL", "")
+        )
+        self._fs_session_id: Optional[str] = None
 
+    # ------------------------------------------------------------------
+    # FlareSolverr proxy (opt-in)
+    # ------------------------------------------------------------------
+    def _fs_url(self) -> str:
+        return getattr(settings, "FLARESOLVERR_URL", "").rstrip("/")
+
+    def _fs_create_session(self) -> Optional[str]:
+        """Cria/retorna o id da sessão deste source no FlareSolverr."""
+        if self._fs_session_id:
+            return self._fs_session_id
+        url = self._fs_url()
+        if not url:
+            return None
+        sid = f"nexus-{self.source_id}"
+        try:
+            r = requests.post(
+                url,
+                json={"cmd": "sessions.create", "session": sid},
+                timeout=30,
+            )
+            r.raise_for_status()
+            self._fs_session_id = sid
+            return sid
+        except Exception as exc:
+            logger.warning("FlareSolverr sessions.create falhou para %s: %s", self.source_id, exc)
+            return None
+
+    def _fs_request(self, method: str, url: str, *, params: dict | None, data: dict | None) -> _FakeResponse:
+        """Roteia request via FlareSolverr. Sem suporte a json body — só GET/POST form."""
+        sid = self._fs_create_session()
+        full_url = url
+        if params:
+            from urllib.parse import urlencode
+            sep = "&" if "?" in full_url else "?"
+            full_url = f"{full_url}{sep}{urlencode(params)}"
+
+        cmd = "request.get" if method.upper() == "GET" else "request.post"
+        payload: dict = {
+            "cmd": cmd,
+            "url": full_url,
+            "maxTimeout": int(self.timeout * 1000),
+        }
+        if sid:
+            payload["session"] = sid
+        if cmd == "request.post":
+            from urllib.parse import urlencode
+            payload["postData"] = urlencode(data or {})
+
+        try:
+            r = requests.post(self._fs_url(), json=payload, timeout=self.timeout + 30)
+            r.raise_for_status()
+            body = r.json()
+        except Exception as exc:
+            raise SourceHTTPError(f"FlareSolverr proxy error: {exc}", None, "FlareSolverrError")
+
+        if body.get("status") != "ok":
+            raise SourceHTTPError(
+                f"FlareSolverr returned {body.get('status')}: {body.get('message','')[:200]}",
+                None,
+                "FlareSolverrFailure",
+            )
+        sol = body.get("solution") or {}
+        return _FakeResponse(
+            status_code=int(sol.get("status") or 0),
+            text=sol.get("response") or "",
+            headers=sol.get("headers") or {},
+        )
+
+    # ------------------------------------------------------------------
+    # request
+    # ------------------------------------------------------------------
     def request(
         self,
         method: str,
@@ -80,15 +173,18 @@ class BaseHTTPClient:
             error_message = ""
             success = False
             try:
-                resp = self.session.request(
-                    method,
-                    url,
-                    params=params,
-                    data=data,
-                    json=json_body,
-                    headers=headers,
-                    timeout=self.timeout,
-                )
+                if self.use_flaresolverr and method.upper() in ("GET", "POST"):
+                    resp = self._fs_request(method, url, params=params, data=data)
+                else:
+                    resp = self.session.request(
+                        method,
+                        url,
+                        params=params,
+                        data=data,
+                        json=json_body,
+                        headers=headers,
+                        timeout=self.timeout,
+                    )
                 status_code = resp.status_code
                 if resp.status_code >= 500:
                     error_class = f"HTTP{resp.status_code}"

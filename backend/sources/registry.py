@@ -52,6 +52,14 @@ PROVIDER_MAP: dict[str, str] = {
     # Reativaveis com trabalho — nao no default
     "asurascans": "sources.providers.asurascans:AsuraScansSource",
     "tsuki": "sources.providers.tsuki:TsukiSource",
+    # Scans BR via Madara — exigem FlareSolverr ativo + opt-in via SOURCES_ENABLED.
+    # Mihon-style: cobre os scanlators mais usados em PT-BR no app oficial.
+    "hunterscomics": "sources.providers.br_madara:HuntersComicsSource",
+    "luratoon": "sources.providers.br_madara:LuraToonSource",
+    "remangas": "sources.providers.br_madara:RemangasSource",
+    "lermangas": "sources.providers.br_madara:LermangasSource",
+    "sussytoons": "sources.providers.br_madara:SussyToonsSource",
+    "mediocretoons": "sources.providers.br_madara:MediocreToonsSource",
 }
 
 
