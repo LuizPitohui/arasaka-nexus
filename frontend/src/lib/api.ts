@@ -199,6 +199,7 @@ export const auth = {
     username: string;
     email: string;
     password: string;
+    birthdate: string;
   }): Promise<{ access: string; refresh: string; user: { id: number; username: string; email: string } }> {
     const data = await api.post<{
       access: string;

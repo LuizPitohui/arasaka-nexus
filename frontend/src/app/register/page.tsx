@@ -15,7 +15,9 @@ export default function RegisterPage() {
     email: '',
     password: '',
     confirm: '',
+    birthdate: '',
   });
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -35,6 +37,23 @@ export default function RegisterPage() {
     if (form.password.length < 8) localErrors.password = 'MIN 8 CHARS';
     if (form.password !== form.confirm)
       localErrors.confirm = 'PASSCODE MISMATCH';
+    if (!form.birthdate) {
+      localErrors.birthdate = 'CAMPO_OBRIGATÓRIO';
+    } else {
+      const bd = new Date(form.birthdate);
+      const today = new Date();
+      let age = today.getFullYear() - bd.getFullYear();
+      const m = today.getMonth() - bd.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < bd.getDate())) age--;
+      if (Number.isNaN(bd.getTime()) || bd > today) {
+        localErrors.birthdate = 'DATA_INVÁLIDA';
+      } else if (age < 13) {
+        localErrors.birthdate = 'IDADE_MÍNIMA · 13';
+      }
+    }
+    if (!acceptTerms) {
+      localErrors.terms = 'ACEITE_OS_TERMOS';
+    }
     if (Object.keys(localErrors).length) {
       setErrors(localErrors);
       return;
@@ -47,6 +66,7 @@ export default function RegisterPage() {
         username: form.username.trim(),
         email: form.email.trim().toLowerCase(),
         password: form.password,
+        birthdate: form.birthdate,
       });
       toast.dismiss(loadId);
       toast.success('// WELCOME, AGENT — ACCESS GRANTED');
@@ -167,6 +187,56 @@ export default function RegisterPage() {
             placeholder="••••••••"
             required
           />
+          <Field
+            label="// DATA_NASCIMENTO (imutável após cadastro)"
+            type="date"
+            autoComplete="bday"
+            value={form.birthdate}
+            onChange={update('birthdate')}
+            error={errors.birthdate}
+            required
+          />
+
+          <label
+            className="flex items-start gap-3 mono text-[11px] uppercase tracking-widest cursor-pointer select-none"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            <input
+              type="checkbox"
+              checked={acceptTerms}
+              onChange={(e) => setAcceptTerms(e.target.checked)}
+              className="mt-0.5 accent-[var(--arasaka-red)]"
+            />
+            <span>
+              Li e aceito os{' '}
+              <Link
+                href="/termos"
+                target="_blank"
+                style={{ color: 'var(--arasaka-red)' }}
+                className="hover:underline"
+              >
+                Termos
+              </Link>{' '}
+              e a{' '}
+              <Link
+                href="/privacidade"
+                target="_blank"
+                style={{ color: 'var(--arasaka-red)' }}
+                className="hover:underline"
+              >
+                Política de Privacidade
+              </Link>
+              .
+            </span>
+          </label>
+          {errors.terms && (
+            <p
+              className="mono text-[10px] uppercase tracking-widest"
+              style={{ color: 'var(--arasaka-red)' }}
+            >
+              ⚠ {errors.terms}
+            </p>
+          )}
 
           {errors.detail && (
             <div

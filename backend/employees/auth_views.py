@@ -28,10 +28,14 @@ class RegisterThrottle(AnonRateThrottle):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    birthdate = serializers.DateField(
+        required=True,
+        help_text="Data de nascimento (YYYY-MM-DD). Imutável após cadastro.",
+    )
 
     class Meta:
         model = User
-        fields = ["username", "email", "password"]
+        fields = ["username", "email", "password", "birthdate"]
         extra_kwargs = {
             "username": {"required": True},
             "email": {"required": True},
@@ -60,12 +64,39 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(list(exc.messages))
         return value
 
+    def validate_birthdate(self, value):
+        from datetime import date
+
+        today = date.today()
+        if value > today:
+            raise serializers.ValidationError("Data de nascimento inválida.")
+        # 13 anos é o piso legal para qualquer cadastro online no Brasil (ECA).
+        age = (
+            today.year
+            - value.year
+            - ((today.month, today.day) < (value.month, value.day))
+        )
+        if age < 13:
+            raise serializers.ValidationError(
+                "Idade mínima para cadastro é 13 anos."
+            )
+        return value
+
     def create(self, validated_data: dict) -> "User":
-        return User.objects.create_user(
+        from django.utils import timezone
+
+        birthdate = validated_data.pop("birthdate")
+        user = User.objects.create_user(
             username=validated_data["username"],
             email=validated_data["email"],
             password=validated_data["password"],
         )
+        # Profile is auto-created via signal; fill the birthdate now and lock.
+        if hasattr(user, "profile"):
+            user.profile.birthdate = birthdate
+            user.profile.birthdate_set_at = timezone.now()
+            user.profile.save(update_fields=["birthdate", "birthdate_set_at"])
+        return user
 
 
 @api_view(["POST"])

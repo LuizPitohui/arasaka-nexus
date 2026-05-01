@@ -5,12 +5,21 @@ export type Paginated<T> = {
   results: T[];
 };
 
+export type ContentRating = 'safe' | 'suggestive' | 'erotica' | 'pornographic';
+
+export const ADULT_RATINGS: ContentRating[] = ['erotica', 'pornographic'];
+
+export function isAdultRating(rating?: string | null): boolean {
+  return rating === 'erotica' || rating === 'pornographic';
+}
+
 export type MangaSummary = {
   id: number;
   mangadex_id: string | null;
   title: string;
   cover: string;
   status: string;
+  content_rating: ContentRating;
   is_active: boolean;
   categories: string[];
 };

@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "django_celery_results",
     "employees",
     "accounts",
+    "site_config",
 ]
 
 MIDDLEWARE = [

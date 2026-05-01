@@ -19,6 +19,28 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
+# Content ratings always shown publicly (SFW). Adult ratings are gated behind
+# both age verification (Profile.birthdate >= 18) and an explicit opt-in
+# (Profile.show_adult = True).
+SAFE_RATINGS = ("safe", "suggestive")
+ADULT_RATINGS = ("erotica", "pornographic")
+
+
+def _user_can_see_adult(request) -> bool:
+    if not request.user.is_authenticated:
+        return False
+    profile = getattr(request.user, "profile", None)
+    if not profile:
+        return False
+    return profile.is_adult and profile.show_adult
+
+
+def _filter_adult_qs(request, qs):
+    """Hide adult-rated mangás unless the user has opted-in and is verified."""
+    if _user_can_see_adult(request):
+        return qs
+    return qs.filter(content_rating__in=SAFE_RATINGS)
+
 # Cache key for individual manga detail responses; short TTL since chapter
 # count changes when feeds sync.
 MANGA_DETAIL_CACHE_TTL = 60
@@ -107,11 +129,18 @@ class MangaViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         # Short cache (60s) — cuts repeated detail loads when a user opens
-        # several chapters in a row from the same page.
+        # several chapters in a row from the same page. Cache is keyed by pk
+        # only (not user) but we re-verify the adult gate before serving so
+        # cached adult metadata never leaks to non-adult users.
+        from django.http import Http404
+
         pk = kwargs.get("pk")
         cache_key = MANGA_DETAIL_CACHE_KEY.format(id=pk)
         cached = cache.get(cache_key)
         if cached is not None:
+            rating = cached.get("content_rating")
+            if rating in ADULT_RATINGS and not _user_can_see_adult(request):
+                raise Http404
             return Response(cached)
         response = super().retrieve(request, *args, **kwargs)
         if response.status_code == 200:
@@ -128,6 +157,7 @@ class MangaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Manga.objects.filter(is_active=True).prefetch_related("categories")
+        qs = _filter_adult_qs(self.request, qs)
 
         params = self.request.query_params
 
@@ -163,6 +193,7 @@ class MangaViewSet(viewsets.ModelViewSet):
             .prefetch_related("categories")
             .order_by("-favorites_count", "-id")
         )
+        qs = _filter_adult_qs(request, qs)
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = MangaListSerializer(page, many=True)
@@ -178,6 +209,7 @@ class MangaViewSet(viewsets.ModelViewSet):
             .prefetch_related("categories")
             .order_by("-latest_chapter_at")
         )
+        qs = _filter_adult_qs(request, qs)
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = MangaListSerializer(page, many=True)
@@ -187,7 +219,7 @@ class MangaViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], permission_classes=[AllowAny])
     def random(self, request):
         manga = (
-            Manga.objects.filter(is_active=True)
+            _filter_adult_qs(request, Manga.objects.filter(is_active=True))
             .order_by("?")
             .first()
         )
@@ -273,8 +305,9 @@ def search_mangas(request):
         return Response([])
 
     local_qs = list(
-        Manga.objects.filter(title__icontains=query, is_active=True)
-        .order_by("-id")[:LOCAL_LIMIT]
+        _filter_adult_qs(
+            request, Manga.objects.filter(title__icontains=query, is_active=True)
+        ).order_by("-id")[:LOCAL_LIMIT]
     )
     seen_dex_ids: set[str] = {m.mangadex_id for m in local_qs if m.mangadex_id}
 
@@ -363,9 +396,9 @@ def home_content(request):
         task_seed_initial_library.delay()
         seeding = True
 
-    base_qs = (
-        Manga.objects.filter(is_active=True)
-        .prefetch_related("categories")
+    base_qs = _filter_adult_qs(
+        request,
+        Manga.objects.filter(is_active=True).prefetch_related("categories"),
     )
 
     featured = list(base_qs.order_by("-id")[:10])

@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { useCountUp } from '@/hooks/useCountUp';
+import { AdultCardLock, useAdultReveal } from '@/components/AdultLock';
+import { isAdultRating } from '@/lib/types';
 
 export type GridManga = {
   id: number;
@@ -12,6 +14,7 @@ export type GridManga = {
   cover: string;
   status?: string;
   categories?: string[];
+  content_rating?: string;
 };
 
 export function MangaGrid({ items }: { items: GridManga[] }) {
@@ -48,9 +51,17 @@ export function MangaCard({
     return () => clearTimeout(t);
   }, [index]);
 
+  const { isAdult, revealed, reveal } = useAdultReveal(manga.id, manga.content_rating);
+  const showLock = isAdult && !revealed;
+
   return (
     <Link
-      href={`/manga/${manga.id}`}
+      href={showLock ? '#' : `/manga/${manga.id}`}
+      onClick={(e) => {
+        if (showLock) {
+          e.preventDefault();
+        }
+      }}
       className="group block corners-sm card-shell"
       style={{
         opacity: mounted ? 1 : 0,
@@ -113,20 +124,42 @@ export function MangaCard({
             // ENTRY_{String(manga.id).padStart(4, '0')}
           </span>
         </div>
+
+        {showLock && (
+          <AdultCardLock
+            rating={manga.content_rating}
+            onReveal={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              reveal();
+            }}
+          />
+        )}
       </div>
       <h3
         className="mt-3 text-[13px] font-semibold line-clamp-2 transition-colors"
-        style={{ color: 'var(--fg-secondary)' }}
+        style={{
+          color: 'var(--fg-secondary)',
+          filter: showLock ? 'blur(6px)' : 'none',
+          userSelect: showLock ? 'none' : 'auto',
+        }}
       >
         {manga.title}
       </h3>
       {manga.categories && manga.categories.length > 0 && (
         <p
           className="mono text-[10px] truncate mt-1 uppercase tracking-widest"
-          style={{ color: 'var(--fg-muted)' }}
+          style={{
+            color: 'var(--fg-muted)',
+            filter: showLock ? 'blur(4px)' : 'none',
+            userSelect: showLock ? 'none' : 'auto',
+          }}
         >
           {manga.categories.slice(0, 2).join(' · ')}
         </p>
+      )}
+      {isAdult && (
+        <span className="sr-only">Conteúdo adulto</span>
       )}
     </Link>
   );

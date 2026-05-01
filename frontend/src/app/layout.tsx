@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 import { Toaster } from 'sonner';
 
 import BootSequence from '@/components/BootSequence';
+import { CookieConsent } from '@/components/CookieConsent';
 import CrtOverlay from '@/components/CrtOverlay';
+import { FooterShell } from '@/components/FooterShell';
 import { HeaderShell } from '@/components/HeaderShell';
 import RouteTransition from '@/components/RouteTransition';
 import StatusBar from '@/components/StatusBar';
@@ -25,6 +27,8 @@ export default function RootLayout({
         <BootSequence />
         <HeaderShell />
         {children}
+        <FooterShell />
+        <CookieConsent />
         <RouteTransition />
         <StatusBar />
         <CrtOverlay />

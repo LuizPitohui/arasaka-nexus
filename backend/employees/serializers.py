@@ -43,6 +43,7 @@ class MangaListSerializer(serializers.ModelSerializer):
             "title",
             "cover",
             "status",
+            "content_rating",
             "is_active",
             "categories",
         ]
@@ -70,6 +71,7 @@ class MangaDetailSerializer(serializers.ModelSerializer):
             "cover",
             "author",
             "status",
+            "content_rating",
             "is_active",
             "created_at",
             "categories",

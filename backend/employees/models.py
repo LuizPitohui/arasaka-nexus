@@ -32,6 +32,20 @@ class Manga(models.Model):
 
     author = models.CharField(max_length=100, default="Desconhecido")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ONGOING')
+    # Mirrored from MangaDex `attributes.contentRating`. Used to gate adult
+    # content behind age verification.
+    CONTENT_RATING_CHOICES = [
+        ('safe', 'Safe'),
+        ('suggestive', 'Suggestive'),
+        ('erotica', 'Erotica'),
+        ('pornographic', 'Pornographic'),
+    ]
+    content_rating = models.CharField(
+        max_length=20,
+        choices=CONTENT_RATING_CHOICES,
+        default='safe',
+        db_index=True,
+    )
     categories = models.ManyToManyField(Category, related_name='mangas', blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -24,11 +24,36 @@ class Profile(models.Model):
         choices=READER_MODE_CHOICES,
         default="vertical",
     )
+    # Birthdate is set ONCE (during register or first profile fill for legacy
+    # accounts). After ``birthdate_set_at`` is filled, the API rejects further
+    # updates and the user must contact an admin to amend (audit trail).
+    birthdate = models.DateField(null=True, blank=True)
+    birthdate_set_at = models.DateTimeField(null=True, blank=True)
+    # Whether this user has unlocked adult content. Defaults to False even when
+    # birthdate >= 18 — user must explicitly opt-in via UI.
+    show_adult = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Profile<{self.user.username}>"
+
+    @property
+    def age(self) -> int | None:
+        if not self.birthdate:
+            return None
+        from datetime import date
+
+        today = date.today()
+        return today.year - self.birthdate.year - (
+            (today.month, today.day) < (self.birthdate.month, self.birthdate.day)
+        )
+
+    @property
+    def is_adult(self) -> bool:
+        a = self.age
+        return a is not None and a >= 18
 
 
 class Favorite(models.Model):

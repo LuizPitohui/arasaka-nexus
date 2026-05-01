@@ -7,6 +7,8 @@ import { ArrowLeft, BookOpen, Check, Heart, ListPlus, Plus } from 'lucide-react'
 import { toast } from 'sonner';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
+import { AdultPageGate, useAdultReveal } from '@/components/AdultLock';
+import { isAdultRating } from '@/lib/types';
 
 type ListSummary = {
   id: number;
@@ -26,6 +28,7 @@ type MangaDetail = {
   cover: string;
   author: string;
   status: string;
+  content_rating?: string;
   categories: Category[];
   chapter_count: number;
 };
@@ -129,6 +132,71 @@ export default function MangaDetails() {
   }
   if (!manga) return null;
 
+  return (
+    <>
+      <AdultGate
+        manga={manga}
+        authed={authed}
+        onBack={() => router.push('/')}
+      />
+      <MangaDetailBody
+        manga={manga}
+        chapters={chapters}
+        params={params}
+        router={router}
+        authed={authed}
+        isFavorite={isFavorite}
+        favLoading={favLoading}
+        toggleFavorite={toggleFavorite}
+      />
+    </>
+  );
+}
+
+function AdultGate({
+  manga,
+  authed,
+  onBack,
+}: {
+  manga: MangaDetail;
+  authed: boolean;
+  onBack: () => void;
+}) {
+  const { isAdult, revealed, reveal } = useAdultReveal(manga.id, manga.content_rating);
+  if (!isAdult || revealed) return null;
+  return (
+    <AdultPageGate
+      rating={manga.content_rating}
+      hasAccess={authed}
+      onReveal={reveal}
+      onBack={onBack}
+    />
+  );
+}
+
+type MangaDetailBodyProps = {
+  manga: MangaDetail;
+  chapters: Chapter[];
+  params: { id: string } | null;
+  router: ReturnType<typeof useRouter>;
+  authed: boolean;
+  isFavorite: boolean;
+  favLoading: boolean;
+  toggleFavorite: () => Promise<void>;
+};
+
+function MangaDetailBody({
+  manga,
+  chapters,
+  params,
+  router,
+  authed,
+  isFavorite,
+  favLoading,
+  toggleFavorite,
+}: MangaDetailBodyProps) {
+  const { isAdult, revealed } = useAdultReveal(manga.id, manga.content_rating);
+  if (isAdult && !revealed) return null;
   return (
     <main
       className="min-h-screen relative"

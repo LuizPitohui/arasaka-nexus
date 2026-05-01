@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Save, Shield } from 'lucide-react';
+import { Calendar, Lock, Save, Shield, ShieldAlert } from 'lucide-react';
 
 import Loader from '@/components/Loader';
 
@@ -17,6 +17,11 @@ type Profile = {
   bio: string;
   preferred_language: string;
   reader_mode: 'vertical' | 'paged' | 'webtoon' | 'double';
+  birthdate: string | null;
+  birthdate_locked: boolean;
+  age: number | null;
+  is_adult: boolean;
+  show_adult: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -61,16 +66,29 @@ export default function ProfilePage() {
     if (!profile) return;
     setSaving(true);
     try {
-      const updated = await api.patch<Profile>('/accounts/profile/', {
+      const payload: Record<string, unknown> = {
         bio: profile.bio,
         preferred_language: profile.preferred_language,
         reader_mode: profile.reader_mode,
-      });
+        show_adult: profile.show_adult,
+      };
+      // Only send birthdate if not yet locked (set-once); otherwise the backend
+      // would 400. Empty string means user didn't fill it.
+      if (!profile.birthdate_locked && profile.birthdate) {
+        payload.birthdate = profile.birthdate;
+      }
+      const updated = await api.patch<Profile>('/accounts/profile/', payload);
       setProfile(updated);
       toast.success('Perfil atualizado.');
     } catch (err) {
-      console.error(err);
-      toast.error('Falha ao salvar.');
+      if (err instanceof ApiError && err.data && typeof err.data === 'object') {
+        const data = err.data as Record<string, string[] | string>;
+        const first = Object.values(data)[0];
+        const msg = Array.isArray(first) ? first.join(' ') : String(first);
+        toast.error(msg || 'Falha ao salvar.');
+      } else {
+        toast.error('Falha ao salvar.');
+      }
     } finally {
       setSaving(false);
     }
@@ -250,6 +268,106 @@ export default function ProfilePage() {
                   </button>
                 );
               })}
+            </div>
+          </Section>
+
+          <Section label="04" title="Idade & Conteúdo Adulto">
+            <div className="space-y-4">
+              <div>
+                <label
+                  className="mono text-[10px] uppercase tracking-widest block mb-2"
+                  style={{ color: 'var(--fg-muted)' }}
+                >
+                  // DATA_NASCIMENTO
+                </label>
+                <div className="flex items-center gap-2">
+                  <Calendar
+                    className="w-4 h-4"
+                    style={{ color: 'var(--fg-muted)' }}
+                  />
+                  <input
+                    type="date"
+                    value={profile.birthdate ?? ''}
+                    disabled={profile.birthdate_locked}
+                    onChange={(e) => update('birthdate', e.target.value)}
+                    className="p-2 mono text-sm focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border-mid)',
+                      color: 'var(--fg-primary)',
+                      colorScheme: 'dark',
+                    }}
+                  />
+                  {profile.birthdate_locked && (
+                    <span
+                      className="mono text-[10px] uppercase tracking-widest flex items-center gap-1"
+                      style={{ color: 'var(--arasaka-red)' }}
+                    >
+                      <Lock className="w-3 h-3" /> TRAVADO
+                    </span>
+                  )}
+                  {profile.age !== null && (
+                    <span
+                      className="mono text-[10px] uppercase tracking-widest"
+                      style={{ color: 'var(--fg-muted)' }}
+                    >
+                      · {profile.age} anos
+                    </span>
+                  )}
+                </div>
+                <p
+                  className="mt-2 mono text-[10px] uppercase tracking-widest"
+                  style={{ color: 'var(--fg-muted)' }}
+                >
+                  {profile.birthdate_locked
+                    ? '// Já registrada. Para correção, contate o administrador.'
+                    : '// Atenção: definida uma única vez e não poderá ser alterada.'}
+                </p>
+              </div>
+
+              <div
+                className="p-4 corners-sm"
+                style={{
+                  background: profile.show_adult
+                    ? 'rgba(220,38,38,0.06)'
+                    : 'var(--bg-elevated)',
+                  border: '1px solid',
+                  borderColor: profile.show_adult
+                    ? 'var(--arasaka-red)'
+                    : 'var(--border-mid)',
+                }}
+              >
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile.show_adult}
+                    disabled={!profile.is_adult}
+                    onChange={(e) => update('show_adult', e.target.checked)}
+                    className="mt-1 accent-[var(--arasaka-red)] disabled:opacity-50"
+                  />
+                  <span className="flex-1">
+                    <span
+                      className="mono text-[11px] uppercase tracking-widest font-bold flex items-center gap-2"
+                      style={{
+                        color: profile.is_adult
+                          ? 'var(--arasaka-red)'
+                          : 'var(--fg-muted)',
+                      }}
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      Exibir conteúdo adulto (18+)
+                    </span>
+                    <span
+                      className="block mono text-[10px] uppercase tracking-widest mt-1"
+                      style={{ color: 'var(--fg-muted)' }}
+                    >
+                      {profile.is_adult
+                        ? 'Inclui títulos com classificação erótica/pornográfica nas listagens.'
+                        : 'Disponível somente para contas com idade verificada (18+).'}
+                    </span>
+                  </span>
+                </label>
+              </div>
             </div>
           </Section>
 

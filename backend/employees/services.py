@@ -225,11 +225,16 @@ class MangaDexScanner:
             "cover": _build_cover_url(dex_id, manga_data.get("relationships") or []),
             "author": "Desconhecido",
             "status": (attrs.get("status") or "unknown").upper(),
+            "content_rating": (attrs.get("contentRating") or "safe").lower(),
         }
 
     def _upsert_manga(self, manga_data: dict[str, Any]) -> tuple[Manga, bool]:
         summary = self._summarize(manga_data)
         attrs = manga_data.get("attributes") or {}
+
+        rating = summary.get("content_rating") or "safe"
+        if rating not in {"safe", "suggestive", "erotica", "pornographic"}:
+            rating = "safe"
 
         manga_obj, created = Manga.objects.update_or_create(
             mangadex_id=summary["mangadex_id"],
@@ -238,6 +243,7 @@ class MangaDexScanner:
                 "description": summary["description"],
                 "cover": summary["cover"],
                 "status": summary["status"],
+                "content_rating": rating,
             },
         )
 
