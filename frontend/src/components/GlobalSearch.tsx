@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { ApiError, api } from '@/lib/api';
+import { SourceBadge, isImportableSource } from '@/components/SourceBadge';
 
 type SearchResult = {
   id: number | string;
@@ -13,6 +15,8 @@ type SearchResult = {
   status?: string;
   mangadex_id?: string | null;
   in_library?: boolean;
+  source?: string;
+  external_id?: string;
 };
 
 const MIN_LEN = 2;
@@ -115,21 +119,37 @@ export function GlobalSearch() {
   };
 
   const openManga = async (m: SearchResult) => {
-    setOpen(false);
-    setMobileOpen(false);
-    if (typeof m.id === 'number' && m.id > 0) {
+    // Local catalog: id é numerico, abre direto.
+    if (m.in_library && typeof m.id === 'number' && m.id > 0) {
+      setOpen(false);
+      setMobileOpen(false);
       router.push(`/manga/${m.id}`);
       return;
     }
+    // MangaDex live: dispara import e navega quando concluir.
     if (m.mangadex_id) {
+      setOpen(false);
+      setMobileOpen(false);
+      const loading = toast.loading('// IMPORTANDO...');
       try {
         const res = await api.post<{ manga_id: number }>('/import/', {
           mangadex_id: m.mangadex_id,
         });
+        toast.dismiss(loading);
         if (res.manga_id) router.push(`/manga/${res.manga_id}`);
       } catch (err) {
+        toast.dismiss(loading);
         console.error(err);
+        toast.error('// IMPORT_FAIL — tente de novo');
       }
+      return;
+    }
+    // Fontes externas sem import automatico ainda — sinaliza para o usuario.
+    if (!isImportableSource(m.source)) {
+      toast.info(
+        `Fonte "${(m.source ?? 'externa').toUpperCase()}" ainda não tem import automático.`,
+      );
+      return;
     }
   };
 
@@ -401,13 +421,17 @@ function ResultDropdown({
                 <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--fg-primary)' }}>
                   {m.title}
                 </p>
-                <p
-                  className="mono text-[9px] uppercase tracking-widest mt-0.5"
-                  style={{ color: m.in_library ? 'var(--neon-cyan)' : 'var(--fg-muted)' }}
-                >
-                  {m.in_library ? '✓ NO_VAULT' : 'MANGADEX'}
-                  {m.status ? ` · ${m.status}` : ''}
-                </p>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  <SourceBadge source={m.source} inLibrary={m.in_library} />
+                  {m.status && (
+                    <span
+                      className="mono text-[9px] uppercase tracking-widest"
+                      style={{ color: 'var(--fg-muted)' }}
+                    >
+                      {m.status}
+                    </span>
+                  )}
+                </div>
               </div>
             </button>
           </li>
@@ -486,13 +510,17 @@ function MobileResults({
                 <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--fg-primary)' }}>
                   {m.title}
                 </p>
-                <p
-                  className="mono text-[9px] uppercase tracking-widest mt-0.5"
-                  style={{ color: m.in_library ? 'var(--neon-cyan)' : 'var(--fg-muted)' }}
-                >
-                  {m.in_library ? '✓ NO_VAULT' : 'MANGADEX'}
-                  {m.status ? ` · ${m.status}` : ''}
-                </p>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  <SourceBadge source={m.source} inLibrary={m.in_library} size="md" />
+                  {m.status && (
+                    <span
+                      className="mono text-[9px] uppercase tracking-widest"
+                      style={{ color: 'var(--fg-muted)' }}
+                    >
+                      {m.status}
+                    </span>
+                  )}
+                </div>
               </div>
             </button>
           </li>

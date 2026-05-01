@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "employees",
     "accounts",
     "site_config",
+    "sources",
 ]
 
 MIDDLEWARE = [
@@ -196,6 +197,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "employees.scheduled_cleanup_orphans",
         "schedule": crontab(minute=30, hour=4),  # daily 04:30 local
     },
+    "sources-healthcheck": {
+        "task": "sources.healthcheck_all",
+        # A cada minuto. Cada fonte tem seu próprio espaçamento interno;
+        # essa task só dispara probes para as que estão "vencidas".
+        "schedule": crontab(minute="*"),
+    },
 }
 
 # Storage limits for the on-demand page mirror
@@ -227,6 +234,16 @@ MANGADEX_AT_HOME_RATE_PER_MINUTE = int(os.environ.get("MANGADEX_AT_HOME_RATE_PER
 MANGADEX_AT_HOME_CACHE_SECONDS = int(os.environ.get("MANGADEX_AT_HOME_CACHE_SECONDS", "480"))
 MANGADEX_REQUEST_TIMEOUT = int(os.environ.get("MANGADEX_REQUEST_TIMEOUT", "20"))
 
+# --- Sources (multi-fonte) ---
+# IDs habilitados em runtime. Cada um precisa estar mapeado em
+# `sources.registry.PROVIDER_MAP`. Pode ser sobrescrito via env var
+# (CSV: "lermanga,goldenmangas").
+SOURCES_ENABLED = _env_list("SOURCES_ENABLED", "mangadex,comick")
+# Intervalo mínimo entre probes ativos por fonte (em segundos).
+SOURCES_HEALTHCHECK_INTERVAL_SECONDS = int(
+    os.environ.get("SOURCES_HEALTHCHECK_INTERVAL_SECONDS", "300")
+)
+
 # --- Logging ---
 LOGGING = {
     "version": 1,
@@ -249,6 +266,11 @@ LOGGING = {
     },
     "loggers": {
         "employees": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "sources": {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": False,

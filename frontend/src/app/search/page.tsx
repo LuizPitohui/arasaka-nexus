@@ -2,9 +2,11 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 
 import Loader from '@/components/Loader';
 import { MangaCard } from '@/components/MangaGrid';
+import { SourceBadge, isImportableSource } from '@/components/SourceBadge';
 import { ApiError, api } from '@/lib/api';
 
 type SearchResult = {
@@ -14,6 +16,8 @@ type SearchResult = {
   status?: string;
   mangadex_id?: string | null;
   in_library?: boolean;
+  source?: string;
+  external_id?: string;
 };
 
 function SearchContent() {
@@ -57,19 +61,29 @@ function SearchContent() {
   }, [query]);
 
   const open = async (m: SearchResult) => {
-    if (typeof m.id === 'number' && m.id > 0) {
+    if (m.in_library && typeof m.id === 'number' && m.id > 0) {
       router.push(`/manga/${m.id}`);
       return;
     }
     if (m.mangadex_id) {
+      const loading = toast.loading('// IMPORTANDO...');
       try {
         const res = await api.post<{ manga_id: number }>('/import/', {
           mangadex_id: m.mangadex_id,
         });
+        toast.dismiss(loading);
         if (res.manga_id) router.push(`/manga/${res.manga_id}`);
       } catch (err) {
+        toast.dismiss(loading);
         console.error(err);
+        toast.error('// IMPORT_FAIL — tente de novo');
       }
+      return;
+    }
+    if (!isImportableSource(m.source)) {
+      toast.info(
+        `Fonte "${(m.source ?? 'externa').toUpperCase()}" ainda não tem import automático.`,
+      );
     }
   };
 
@@ -118,10 +132,13 @@ function SearchContent() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-5 gap-y-8">
           {results.map((m, i) => (
             <div
-              key={`${m.id}-${m.mangadex_id ?? ''}`}
+              key={`${m.source ?? 'mangadex'}-${m.external_id ?? m.id}`}
               onClick={() => open(m)}
-              className="cursor-pointer"
+              className="cursor-pointer relative"
             >
+              <div className="absolute top-2 right-2 z-10">
+                <SourceBadge source={m.source} inLibrary={m.in_library} />
+              </div>
               <MangaCard
                 index={i}
                 manga={{

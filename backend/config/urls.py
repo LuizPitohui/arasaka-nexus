@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/', include('employees.urls')),
     path('api/accounts/', include('accounts.urls')),
     path('api/site/', include('site_config.urls')),
+    path('api/admin/sources/', include('sources.urls')),
 
     # Rotas de Autenticação
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

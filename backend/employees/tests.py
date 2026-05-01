@@ -223,22 +223,21 @@ class SearchTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [])
 
-    @patch("employees.views.MangaDexScanner")
-    def test_search_blends_local_and_external(self, scanner_cls):
+    @patch("sources.search.multi_source_search")
+    def test_search_blends_local_and_external(self, multi_search):
         _seed_manga(title="Berserk", mangadex_id="abc-123")
-        scanner = scanner_cls.return_value
-        scanner.search_manga.return_value = [
+        # The new multi-source layer is responsible for not duplicating titles
+        # already in the library — we pass `exclude_dex_ids` to it. The mock
+        # returns only the genuinely new external hit, mirroring that contract.
+        multi_search.return_value = [
             {
-                "mangadex_id": "abc-123",  # duplicate of local; should be deduped
-                "title": "Berserk",
-                "cover": "",
-                "description": "",
-                "status": "ONGOING",
-            },
-            {
-                "mangadex_id": "xyz-999",
+                "id": "xyz-999",
                 "title": "Berserk Side Story",
                 "cover": "",
+                "in_library": False,
+                "source": "mangadex",
+                "external_id": "xyz-999",
+                "mangadex_id": "xyz-999",
                 "description": "",
                 "status": "ONGOING",
             },
@@ -251,15 +250,19 @@ class SearchTests(APITestCase):
         self.assertIn("xyz-999", ids)
         local_entries = [r for r in response.data if r["mangadex_id"] == "abc-123"]
         self.assertTrue(local_entries[0]["in_library"])
+        # The view forwarded the local mangadex_id so the upstream layer can
+        # dedup at its level.
+        _, kwargs = multi_search.call_args
+        self.assertIn("abc-123", kwargs["exclude_dex_ids"])
 
-    @patch("employees.views.MangaDexScanner")
-    def test_local_first_skips_mangadex_when_catalogue_is_strong(self, scanner_cls):
-        # 8+ local hits should make us skip the upstream call entirely.
+    @patch("sources.search.multi_source_search")
+    def test_local_first_skips_external_when_catalogue_is_strong(self, multi_search):
+        # 8+ local hits should make us skip the external fan-out entirely.
         for i in range(10):
             _seed_manga(title=f"Naruto Volume {i}", mangadex_id=f"local-{i}")
         response = self.client.get("/api/search/?q=naruto")
         self.assertEqual(response.status_code, 200)
-        scanner_cls.assert_not_called()
+        multi_search.assert_not_called()
         # all returned entries are flagged as local
         self.assertTrue(all(r["in_library"] for r in response.data))
 

@@ -66,7 +66,7 @@ from .serializers import (
     MangaListSerializer,
 )
 from .mangadex_client import get_client
-from .services import MangaDexScanner, get_mangadex_pages
+from .services import get_mangadex_pages
 from .tasks import task_import_manga_chapters, task_seed_initial_library
 
 logger = logging.getLogger(__name__)
@@ -480,10 +480,11 @@ def proxy_chapter_image(request, chapter_id: int, page_index: int):
 
 
 # ----------------------------------------------------------------------
-# Search (hybrid: local + MangaDex)
+# Search (hybrid: local + multi-source via registry)
 # ----------------------------------------------------------------------
 # Local catalogue is queried first; only when it has fewer than this many hits
-# do we fan out to MangaDex (which has a tight 30/min budget shared across users).
+# do we fan out to external sources (each has its own rate budget; the registry
+# runs them in parallel and skips any flagged DOWN by the health subsystem).
 LOCAL_FIRST_THRESHOLD = 8
 LOCAL_LIMIT = 12
 
@@ -510,38 +511,17 @@ def search_mangas(request):
             "cover": m.cover_url,
             "mangadex_id": m.mangadex_id,
             "in_library": True,
+            "source": "local",
         }
         for m in local_qs
     ]
 
-    # Only consult MangaDex when the local catalogue is weak — keeps the
-    # upstream search budget free for genuinely unknown titles.
+    # Only consult external sources when the local catalogue is weak — keeps
+    # upstream search budgets free for genuinely unknown titles.
     if len(query) > 2 and len(local_qs) < LOCAL_FIRST_THRESHOLD:
-        from urllib.parse import quote
+        from sources.search import multi_source_search
 
-        scanner = MangaDexScanner()
-        for ext in scanner.search_manga(query):
-            dex_id = ext.get("mangadex_id")
-            if not dex_id or dex_id in seen_dex_ids:
-                continue
-            cover = ext.get("cover") or ""
-            # Capas-preview vivem em uploads.mangadex.org, que pode ser bloqueado
-            # pela rede do usuario (mesmo padrao das paginas de capitulos). Quando
-            # for um host externo, embrulhamos no nosso proxy /api/cdn/preview/
-            # — Cloudflare cacheia globalmente por 24h apos primeiro hit.
-            if cover.startswith("http"):
-                cover = f"/api/cdn/preview/?u={quote(cover, safe='')}"
-            results.append(
-                {
-                    "id": dex_id,
-                    "title": ext["title"],
-                    "cover": cover,
-                    "mangadex_id": dex_id,
-                    "in_library": False,
-                    "description": ext.get("description") or "",
-                    "status": ext.get("status") or "UNKNOWN",
-                }
-            )
+        results.extend(multi_source_search(query, exclude_dex_ids=seen_dex_ids))
 
     return Response(results)
 
