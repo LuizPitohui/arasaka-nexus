@@ -100,15 +100,18 @@ def _persist_mihon_manga(manga_dto, *, fetch_chapters_for: str | None = None) ->
                 chap_num = float(cd.number or 0)
             except (TypeError, ValueError):
                 chap_num = 0.0
+            defaults = {
+                "manga": manga,
+                "source_id": "mihon",
+                "number": chap_num,
+                "title": cd.title or "",
+                "translated_language": (cd.language or "").lower(),
+            }
+            if cd.published_at:
+                defaults["published_at"] = cd.published_at
             Chapter.objects.update_or_create(
                 mangadex_id=chapter_storage_id,
-                defaults={
-                    "manga": manga,
-                    "source_id": "mihon",
-                    "number": chap_num,
-                    "title": cd.title or "",
-                    "translated_language": (cd.language or "").lower(),
-                },
+                defaults=defaults,
             )
             chapters_synced += 1
     return manga, created, chapters_synced
@@ -406,15 +409,18 @@ def task_sync_followed_feeds():
                         chap_num = float(cd.number or 0)
                     except (TypeError, ValueError):
                         chap_num = 0.0
+                    defaults = {
+                        "manga": manga,
+                        "source_id": "mihon",
+                        "number": chap_num,
+                        "title": cd.title or "",
+                        "translated_language": (cd.language or "").lower(),
+                    }
+                    if cd.published_at:
+                        defaults["published_at"] = cd.published_at
                     _Chapter.objects.update_or_create(
                         mangadex_id=chapter_storage_id,
-                        defaults={
-                            "manga": manga,
-                            "source_id": "mihon",
-                            "number": chap_num,
-                            "title": cd.title or "",
-                            "translated_language": (cd.language or "").lower(),
-                        },
+                        defaults=defaults,
                     )
                 synced_mihon += 1
             else:

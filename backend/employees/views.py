@@ -181,7 +181,15 @@ class MangaViewSet(viewsets.ModelViewSet):
         if ordering in {"popular"}:
             qs = qs.annotate(favorites_count=Count("favorited_by", distinct=True))
         if ordering in {"latest_chapter"}:
-            qs = qs.annotate(latest_chapter_at=Max("chapters__release_date"))
+            from django.db.models.functions import Coalesce
+            # Coalesce(published_at, release_date): prefer data real upstream;
+            # fallback pra data de insercao quando o capitulo ainda nao foi
+            # backfilled com a data verdadeira.
+            qs = qs.annotate(
+                latest_chapter_at=Max(
+                    Coalesce("chapters__published_at", "chapters__release_date")
+                )
+            )
 
         order_expr = VALID_ORDERINGS.get(ordering, "-id")
         return qs.order_by(order_expr)
@@ -203,9 +211,15 @@ class MangaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], permission_classes=[AllowAny])
     def latest(self, request):
+        from django.db.models.functions import Coalesce
+
         qs = (
             Manga.objects.filter(is_active=True)
-            .annotate(latest_chapter_at=Max("chapters__release_date"))
+            .annotate(
+                latest_chapter_at=Max(
+                    Coalesce("chapters__published_at", "chapters__release_date")
+                )
+            )
             .filter(latest_chapter_at__isnull=False)
             .prefetch_related("categories")
             .order_by("-latest_chapter_at")

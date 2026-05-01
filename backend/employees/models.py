@@ -87,6 +87,12 @@ class Chapter(models.Model):
         default="",
         db_index=True,
     )
+    # Data REAL de publicação no scanlator/agregador (vem do upstream).
+    # MangaDex envia attributes.publishAt (ISO 8601); Mihon envia uploadDate
+    # (ms epoch). Quando NULL, caímos para release_date no ordering de /latest.
+    published_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    # Data em que a row entrou no nosso DB (auto). Usada como fallback quando
+    # published_at é NULL. Mantém legacy chapters ordenáveis.
     release_date = models.DateTimeField(auto_now_add=True)
 
     class Meta:

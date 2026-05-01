@@ -196,14 +196,27 @@ class MangaDexScanner:
                 except (TypeError, ValueError):
                     chap_num_decimal = 0
                 lang = (attrs.get("translatedLanguage") or "").strip().lower()
+                # MangaDex envia attributes.publishAt em ISO 8601 UTC
+                # ("2024-12-04T11:11:34+00:00"). Mantemos null se vier vazio.
+                published_at = None
+                pub_raw = attrs.get("publishAt") or ""
+                if pub_raw:
+                    from datetime import datetime
+                    try:
+                        published_at = datetime.fromisoformat(pub_raw.replace("Z", "+00:00"))
+                    except (TypeError, ValueError):
+                        published_at = None
+                defaults = {
+                    "manga": manga_obj,
+                    "number": chap_num_decimal,
+                    "title": attrs.get("title") or "",
+                    "translated_language": lang,
+                }
+                if published_at:
+                    defaults["published_at"] = published_at
                 Chapter.objects.update_or_create(
                     mangadex_id=dex_id,
-                    defaults={
-                        "manga": manga_obj,
-                        "number": chap_num_decimal,
-                        "title": attrs.get("title") or "",
-                        "translated_language": lang,
-                    },
+                    defaults=defaults,
                 )
                 total_synced += 1
 

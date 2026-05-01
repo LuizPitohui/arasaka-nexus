@@ -253,6 +253,8 @@ class SuwayomiSource(BaseSource):
     def fetch_chapters(
         self, external_id: str, language: Optional[str] = None
     ) -> list[ChapterDTO]:
+        from datetime import datetime, timezone as _tz
+
         _, manga_id = self._split_external(external_id)
         if manga_id is None:
             return []
@@ -260,6 +262,14 @@ class SuwayomiSource(BaseSource):
         items = data if isinstance(data, list) else []
         out: list[ChapterDTO] = []
         for ch in items:
+            published_at = None
+            upload_ms = ch.get("uploadDate")
+            if upload_ms:
+                try:
+                    # Suwayomi/Mihon serve uploadDate em ms epoch (UTC).
+                    published_at = datetime.fromtimestamp(int(upload_ms) / 1000, tz=_tz.utc)
+                except (TypeError, ValueError, OSError):
+                    published_at = None
             out.append(
                 ChapterDTO(
                     external_id=str(ch.get("id") or ""),
@@ -268,6 +278,7 @@ class SuwayomiSource(BaseSource):
                     language=language or "",
                     scanlator=ch.get("scanlator") or "",
                     url=ch.get("realUrl") or "",
+                    published_at=published_at,
                 )
             )
         return out
