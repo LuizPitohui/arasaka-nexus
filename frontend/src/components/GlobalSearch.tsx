@@ -17,6 +17,7 @@ type SearchResult = {
   in_library?: boolean;
   source?: string;
   external_id?: string;
+  sub_source?: string;
 };
 
 const MIN_LEN = 2;
@@ -422,7 +423,7 @@ function ResultDropdown({
                   {m.title}
                 </p>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                  <SourceBadge source={m.source} inLibrary={m.in_library} />
+                  <SourceBadge source={m.source} inLibrary={m.in_library} subSource={m.sub_source} />
                   {m.status && (
                     <span
                       className="mono text-[9px] uppercase tracking-widest"

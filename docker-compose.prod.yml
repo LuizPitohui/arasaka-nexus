@@ -128,9 +128,44 @@ services:
       timeout: 10s
       retries: 3
 
+  # Suwayomi-Server — roda extensões Mihon nativamente e expõe API REST.
+  # A gente delega todas as buscas externas pra ele. Auto-atualiza
+  # extensões seguindo o ritmo da comunidade Mihon. Opt-in:
+  #
+  #     docker compose -f docker-compose.prod.yml --profile mihon up -d
+  #
+  # Quando ativo, no .env.prod:
+  #     SUWAYOMI_URL=http://suwayomi:4567
+  #     SOURCES_ENABLED=mangadex,mangaplus,mihon
+  # e restart backend + celery.
+  #
+  # Volume `suwayomi` persiste extensões instaladas + configurações.
+  # Custo: ~1GB RAM, +500MB de imagem.
+  suwayomi:
+    image: ghcr.io/suwayomi/suwayomi-server:stable
+    container_name: nexus-suwayomi
+    restart: unless-stopped
+    profiles: ["mihon"]
+    environment:
+      TZ: America/Sao_Paulo
+      BIND_IP: 0.0.0.0
+      BIND_PORT: "4567"
+      # Sem auth no endpoint interno — só backend/worker conversam com ele
+      # dentro da network nexus-net (não exposto publicamente).
+      AUTH_MODE: none
+    volumes:
+      - suwayomi:/home/suwayomi/.local/share/Tachidesk
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:4567/api/v1/settings || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
 volumes:
   media:
   static:
+  suwayomi:
 
 networks:
   default:

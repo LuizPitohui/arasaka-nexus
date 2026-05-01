@@ -18,6 +18,7 @@ type SearchResult = {
   in_library?: boolean;
   source?: string;
   external_id?: string;
+  sub_source?: string;
 };
 
 function SearchContent() {
@@ -137,7 +138,7 @@ function SearchContent() {
               className="cursor-pointer relative"
             >
               <div className="absolute top-2 right-2 z-10">
-                <SourceBadge source={m.source} inLibrary={m.in_library} />
+                <SourceBadge source={m.source} inLibrary={m.in_library} subSource={m.sub_source} />
               </div>
               <MangaCard
                 index={i}

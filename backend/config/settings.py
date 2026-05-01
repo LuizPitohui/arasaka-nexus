@@ -260,6 +260,14 @@ SOURCES_HEALTHCHECK_INTERVAL_SECONDS = int(
 #     FLARESOLVERR_URL=http://flaresolverr:8191/v1
 FLARESOLVERR_URL = os.environ.get("FLARESOLVERR_URL", "")
 
+# Suwayomi-Server — sidecar que roda extensoes Mihon nativamente e expoe
+# API REST. Quando setada, o provider `mihon` aparece como agregador de
+# todas as extensoes instaladas no Suwayomi. Ativacao:
+#     docker compose -f docker-compose.prod.yml --profile mihon up -d
+#     SUWAYOMI_URL=http://suwayomi:4567
+#     SOURCES_ENABLED=mangadex,mangaplus,mihon
+SUWAYOMI_URL = os.environ.get("SUWAYOMI_URL", "")
+
 # --- Logging ---
 LOGGING = {
     "version": 1,

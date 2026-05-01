@@ -90,6 +90,38 @@ def trigger_healthcheck(request, source_id: str):
 
 @api_view(["GET"])
 @permission_classes([IsAdminUser])
+def mihon_sub_sources(request):
+    """Lista as extensões Mihon instaladas no Suwayomi (sub-fontes do agregador).
+
+    Não requer healthcheck — só pergunta ao Suwayomi via /api/v1/source/list.
+    Devolve sempre status 200 com `connected=False` quando o sidecar não está
+    configurado, pra que o painel possa diferenciar "Mihon desligado" de
+    "Mihon ligado mas sem extensões".
+    """
+    src = registry.get("mihon")
+    if src is None:
+        return Response({"connected": False, "configured": False, "sub_sources": []})
+    if not getattr(src, "is_configured", False):
+        return Response({"connected": False, "configured": False, "sub_sources": []})
+    try:
+        rows = src.list_sources_public()
+    except Exception as exc:
+        return Response({
+            "connected": False,
+            "configured": True,
+            "error": str(exc)[:300],
+            "sub_sources": [],
+        })
+    return Response({
+        "connected": True,
+        "configured": True,
+        "sub_sources": rows,
+        "count": len(rows),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
 def overview(request):
     """KPIs gerais do painel: contagem de fontes por status, totais, etc."""
     from employees.models import Manga, Chapter

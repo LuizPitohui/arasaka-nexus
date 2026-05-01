@@ -49,6 +49,10 @@ logger = logging.getLogger(__name__)
 PROVIDER_MAP: dict[str, str] = {
     "mangadex": "sources.providers.mangadex:MangaDexSource",
     "mangaplus": "sources.providers.mangaplus:MangaPlusSource",
+    # Mihon Network agregador via Suwayomi (opt-in: profile `mihon` no compose
+    # + SUWAYOMI_URL). Cobre todas extensoes instaladas no Suwayomi como
+    # uma unica fonte unificada — auto-atualiza com a comunidade.
+    "mihon": "sources.providers.suwayomi:SuwayomiSource",
     # Reativaveis com trabalho — nao no default
     "asurascans": "sources.providers.asurascans:AsuraScansSource",
     "tsuki": "sources.providers.tsuki:TsukiSource",

@@ -46,6 +46,22 @@ type SourceDetail = {
 
 const POLL_MS = 30_000;
 
+type MihonSubSource = {
+  id: string;
+  name: string;
+  lang: string;
+  icon: string;
+  is_nsfw: boolean;
+};
+
+type MihonSubSourcesResponse = {
+  connected: boolean;
+  configured: boolean;
+  sub_sources: MihonSubSource[];
+  count?: number;
+  error?: string;
+};
+
 export default function SourceDetailPage({
   params,
 }: {
@@ -54,6 +70,7 @@ export default function SourceDetailPage({
   const { id } = use(params);
   const [data, setData] = useState<SourceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mihon, setMihon] = useState<MihonSubSourcesResponse | null>(null);
 
   const refetch = async () => {
     try {
@@ -62,6 +79,14 @@ export default function SourceDetailPage({
       setError(null);
     } catch (e) {
       setError((e as Error).message);
+    }
+    if (id === 'mihon') {
+      try {
+        const sub = await api.get<MihonSubSourcesResponse>('/admin/sources/mihon/sub-sources/');
+        setMihon(sub);
+      } catch {
+        // Silencioso — sub-sources são best-effort.
+      }
     }
   };
 
@@ -272,6 +297,60 @@ export default function SourceDetailPage({
           </table>
         </div>
       </section>
+
+      {/* MIHON SUB-SOURCES PANEL */}
+      {id === 'mihon' && (
+        <section className="border border-[var(--fg-faint)] bg-[var(--bg-terminal)]/70 backdrop-blur-sm">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--fg-faint)] text-[10px] uppercase tracking-[0.3em] text-[var(--fg-muted)]">
+            <span>// extensões mihon ({mihon?.count ?? 0})</span>
+            <span style={{ color: mihon?.connected ? 'var(--neon-cyan)' : 'var(--neon-magenta)' }}>
+              {mihon === null
+                ? '◌ aguardando'
+                : !mihon.configured
+                ? '⏸ SUWAYOMI_URL não definido'
+                : !mihon.connected
+                ? '✗ suwayomi inacessível'
+                : `◉ ${mihon.count} sub-fontes`}
+            </span>
+          </div>
+          {mihon && mihon.configured && mihon.sub_sources.length === 0 && (
+            <div className="px-4 py-6 text-[var(--fg-muted)] text-[11px] uppercase tracking-[0.25em] text-center">
+              // nenhuma extensão instalada — instale via UI do Suwayomi em :4567
+            </div>
+          )}
+          {mihon && mihon.error && (
+            <div className="px-4 py-3 text-[var(--neon-magenta)] text-[11px]">
+              ✗ {mihon.error}
+            </div>
+          )}
+          {mihon && mihon.sub_sources.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[var(--fg-faint)]">
+              {mihon.sub_sources.map((s) => (
+                <div
+                  key={s.id}
+                  className="bg-[var(--bg-terminal)] px-3 py-2.5 flex items-center gap-2.5 hover:bg-[var(--bg-elevated)] transition-colors"
+                >
+                  {s.icon && (
+                    <img
+                      src={s.icon}
+                      alt=""
+                      className="w-7 h-7 object-contain shrink-0"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12px] text-[var(--fg-primary)] truncate">{s.name}</div>
+                    <div className="flex items-center gap-2 mt-0.5 text-[9px] uppercase tracking-widest">
+                      <span className="text-[var(--neon-cyan)]">{s.lang || '??'}</span>
+                      {s.is_nsfw && <span className="text-[var(--neon-magenta)]">18+</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

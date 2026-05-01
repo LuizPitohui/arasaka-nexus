@@ -68,6 +68,12 @@ const SOURCE_MAP: Record<string, SourceSpec> = {
     bg: 'rgba(220,38,38,0.08)',
     border: 'rgba(220,38,38,0.4)',
   },
+  mihon: {
+    label: 'MIHON',
+    color: '#14b8a6',
+    bg: 'rgba(20,184,166,0.08)',
+    border: 'rgba(20,184,166,0.45)',
+  },
   tsuki: {
     label: 'TSUKI',
     color: '#ec4899',
@@ -104,11 +110,14 @@ export function isImportableSource(source: string | undefined | null): boolean {
 export function SourceBadge({
   source,
   inLibrary,
+  subSource,
   size = 'sm',
 }: {
   source?: string | null;
   /** Override: when item is in the local library, always show NO_VAULT. */
   inLibrary?: boolean;
+  /** For aggregated sources like Mihon — shows the underlying provider. */
+  subSource?: string | null;
   size?: 'sm' | 'md';
 }) {
   const effective = inLibrary ? 'local' : source || '';
@@ -116,6 +125,10 @@ export function SourceBadge({
 
   const padding = size === 'md' ? 'px-2 py-0.5' : 'px-1.5 py-0.5';
   const fontSize = size === 'md' ? 'text-[10px]' : 'text-[9px]';
+
+  const label = subSource && source === 'mihon'
+    ? `${spec.label} · ${subSource.toUpperCase().slice(0, 12)}`
+    : spec.label;
 
   return (
     <span
@@ -125,10 +138,10 @@ export function SourceBadge({
         border: `1px solid ${spec.border}`,
         color: spec.color,
       }}
-      title={`Fonte: ${spec.label}`}
+      title={`Fonte: ${label}`}
     >
       {inLibrary && <span aria-hidden>✓</span>}
-      <span>{spec.label}</span>
+      <span>{label}</span>
     </span>
   );
 }
