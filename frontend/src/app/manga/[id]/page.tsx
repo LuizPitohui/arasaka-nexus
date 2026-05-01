@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
 import { AdultPageGate, useAdultReveal } from '@/components/AdultLock';
+import { LanguageBadge } from '@/components/LanguageBadge';
 import { isAdultRating } from '@/lib/types';
 
 type ListSummary = {
@@ -37,6 +38,7 @@ type Chapter = {
   id: number;
   number: string;
   title: string | null;
+  translated_language?: string | null;
   release_date: string;
 };
 
@@ -405,26 +407,29 @@ function MangaDetailBody({
                       e.currentTarget.style.background = 'var(--bg-terminal)';
                     }}
                   >
-                    <div className="flex items-center gap-4 min-w-0">
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
                       <span
-                        className="mono text-sm font-bold w-14"
+                        className="mono text-sm font-bold w-14 shrink-0"
                         style={{ color: 'var(--arasaka-red)' }}
                       >
                         #{chapter.number.padStart(3, '0')}
                       </span>
                       <span
-                        className="text-sm truncate"
+                        className="text-sm truncate flex-1"
                         style={{ color: 'var(--fg-secondary)' }}
                       >
                         {chapter.title || `Chapter ${chapter.number}`}
                       </span>
                     </div>
-                    <span
-                      className="mono text-[10px] uppercase tracking-widest"
-                      style={{ color: 'var(--fg-muted)' }}
-                    >
-                      READ →
-                    </span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <LanguageBadge code={chapter.translated_language} />
+                      <span
+                        className="mono text-[10px] uppercase tracking-widest hidden sm:inline"
+                        style={{ color: 'var(--fg-muted)' }}
+                      >
+                        READ →
+                      </span>
+                    </div>
                   </Link>
                 ))
               )}

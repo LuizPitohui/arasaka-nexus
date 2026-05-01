@@ -68,13 +68,21 @@ class Chapter(models.Model):
     manga = models.ForeignKey(Manga, on_delete=models.CASCADE, related_name='chapters')
     # NOVO CAMPO DE RASTREIO:
     mangadex_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
-    
+
     number = models.DecimalField(max_digits=6, decimal_places=1)
     title = models.CharField(max_length=255, blank=True, null=True)
+    # Idioma da tradução (ex: "pt-br", "en", "es-la"). Vem do attributes.translatedLanguage
+    # do MangaDex. Indexado para filtragem na listagem.
+    translated_language = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        db_index=True,
+    )
     release_date = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-number'] 
+        ordering = ['-number']
 
     def __str__(self):
         return f"{self.manga.title} - Cap {self.number}"

@@ -10,6 +10,7 @@ from .views import (
     home_content,
     import_manga,
     proxy_chapter_image,
+    proxy_cover_preview,
     search_mangas,
 )
 
@@ -26,6 +27,7 @@ urlpatterns = [
         proxy_chapter_image,
         name="cdn_chapter_image",
     ),
+    path("cdn/preview/", proxy_cover_preview, name="cdn_cover_preview"),
     path("search/", search_mangas, name="search_mangas"),
     path("import/", import_manga, name="import_manga"),
     path("home-data/", home_content, name="home_content"),

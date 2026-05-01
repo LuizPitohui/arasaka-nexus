@@ -15,6 +15,7 @@ import {
 
 import { API_URL, api, tokenStore } from '@/lib/api';
 import Loader from '@/components/Loader';
+import { LanguageBadge } from '@/components/LanguageBadge';
 
 type ReaderPage = {
   id: number | string;
@@ -29,6 +30,7 @@ type ReaderData = {
   manga_title: string;
   chapter_number: string;
   title: string;
+  translated_language?: string | null;
   pages: ReaderPage[];
   navigation: { prev: number | null; next: number | null };
 };
@@ -386,9 +388,12 @@ export default function ReaderPage() {
             <h1 className="text-xs font-bold max-w-[120px] md:max-w-md truncate" style={{ color: 'var(--fg-primary)' }}>
               {data.manga_title}
             </h1>
-            <p className="mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--fg-muted)' }}>
-              // CH_{data.chapter_number} · PG_{String(displayPage).padStart(3, '0')}/{String(totalPages).padStart(3, '0')}
-            </p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--fg-muted)' }}>
+                // CH_{data.chapter_number} · PG_{String(displayPage).padStart(3, '0')}/{String(totalPages).padStart(3, '0')}
+              </p>
+              <LanguageBadge code={data.translated_language} />
+            </div>
           </div>
         </div>
 

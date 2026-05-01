@@ -18,7 +18,7 @@ class ChapterImageSerializer(serializers.ModelSerializer):
 class ChapterListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chapter
-        fields = ["id", "mangadex_id", "number", "title", "release_date"]
+        fields = ["id", "mangadex_id", "number", "title", "translated_language", "release_date"]
 
 
 class ChapterDetailSerializer(serializers.ModelSerializer):
@@ -26,7 +26,16 @@ class ChapterDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chapter
-        fields = ["id", "mangadex_id", "manga", "number", "title", "release_date", "images"]
+        fields = [
+            "id",
+            "mangadex_id",
+            "manga",
+            "number",
+            "title",
+            "translated_language",
+            "release_date",
+            "images",
+        ]
 
 
 class MangaListSerializer(serializers.ModelSerializer):

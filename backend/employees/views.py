@@ -290,6 +290,7 @@ def get_chapter_pages(request, chapter_id: int):
             "manga_title": chapter.manga.title,
             "chapter_number": chapter.number,
             "title": chapter.title,
+            "translated_language": chapter.translated_language or "",
             "pages": pages,
             "navigation": {"prev": prev_chapter_id, "next": next_chapter_id},
         }
@@ -321,6 +322,63 @@ def _build_page_url(chapter_id: int, page_index: int, *, saver: bool, force_refr
         return None
     kind = "data-saver" if saver else "data"
     return f"{base_url}/{kind}/{chapter_hash}/{files[page_index]}"
+
+
+# Allowlist de hosts que aceitamos proxiar via /api/cdn/preview/. Evita
+# que o endpoint vire um SSRF aberto.
+_PREVIEW_ALLOWED_HOSTS = {
+    "uploads.mangadex.org",
+    "mangadex.org",
+}
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def proxy_cover_preview(request):
+    """Stream uma imagem de uploads.mangadex.org via nossa origem.
+
+    Usado para capas-preview de buscas live (mangás ainda não importados).
+    Cloudflare cacheia por 24h, hits subsequentes não tocam o origin.
+    """
+    from urllib.parse import urlparse
+
+    src = request.query_params.get("u") or ""
+    if not src:
+        raise Http404("missing url")
+    try:
+        parsed = urlparse(src)
+    except Exception:
+        raise Http404("invalid url")
+    if parsed.scheme not in ("http", "https") or parsed.hostname not in _PREVIEW_ALLOWED_HOSTS:
+        raise Http404("disallowed host")
+
+    try:
+        r = _requests.get(
+            src,
+            timeout=15,
+            stream=True,
+            headers={
+                "User-Agent": getattr(get_client(), "user_agent", "ArasakaNexus/0.1"),
+                "Referer": "https://mangadex.org/",
+            },
+        )
+    except Exception as exc:
+        logger.warning("preview proxy fetch failed (%s): %s", src, exc)
+        raise Http404("upstream unavailable")
+
+    if r.status_code != 200:
+        r.close()
+        return HttpResponse(status=r.status_code)
+
+    content_type = r.headers.get("Content-Type", "image/jpeg")
+    response = StreamingHttpResponse(
+        r.iter_content(chunk_size=32 * 1024),
+        content_type=content_type,
+    )
+    response["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    if cl := r.headers.get("Content-Length"):
+        response["Content-Length"] = cl
+    return response
 
 
 @api_view(["GET"])
@@ -418,16 +476,25 @@ def search_mangas(request):
     # Only consult MangaDex when the local catalogue is weak — keeps the
     # upstream search budget free for genuinely unknown titles.
     if len(query) > 2 and len(local_qs) < LOCAL_FIRST_THRESHOLD:
+        from urllib.parse import quote
+
         scanner = MangaDexScanner()
         for ext in scanner.search_manga(query):
             dex_id = ext.get("mangadex_id")
             if not dex_id or dex_id in seen_dex_ids:
                 continue
+            cover = ext.get("cover") or ""
+            # Capas-preview vivem em uploads.mangadex.org, que pode ser bloqueado
+            # pela rede do usuario (mesmo padrao das paginas de capitulos). Quando
+            # for um host externo, embrulhamos no nosso proxy /api/cdn/preview/
+            # — Cloudflare cacheia globalmente por 24h apos primeiro hit.
+            if cover.startswith("http"):
+                cover = f"/api/cdn/preview/?u={quote(cover, safe='')}"
             results.append(
                 {
                     "id": dex_id,
                     "title": ext["title"],
-                    "cover": ext["cover"],
+                    "cover": cover,
                     "mangadex_id": dex_id,
                     "in_library": False,
                     "description": ext.get("description") or "",

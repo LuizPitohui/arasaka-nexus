@@ -195,12 +195,14 @@ class MangaDexScanner:
                     chap_num_decimal = float(chap_num)
                 except (TypeError, ValueError):
                     chap_num_decimal = 0
+                lang = (attrs.get("translatedLanguage") or "").strip().lower()
                 Chapter.objects.update_or_create(
                     mangadex_id=dex_id,
                     defaults={
                         "manga": manga_obj,
                         "number": chap_num_decimal,
                         "title": attrs.get("title") or "",
+                        "translated_language": lang,
                     },
                 )
                 total_synced += 1
