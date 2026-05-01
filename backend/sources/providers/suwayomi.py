@@ -228,26 +228,60 @@ class SuwayomiSource(BaseSource):
         return out
 
     def fetch_pages(self, chapter_external_id: str) -> list[PageDTO]:
-        # No Suwayomi cada página é servida via /api/v1/manga/{mid}/chapter/{idx}/page/{n}
-        # Precisamos do pageCount; chamamos o endpoint do capítulo primeiro.
-        chapter_id = chapter_external_id
-        data = self._get(f"/api/v1/chapter/{chapter_id}")
-        if not data:
+        """Retorna URLs das páginas. Endpoint Suwayomi:
+        /api/v1/manga/{mangaId}/chapter/{index}/page/{n}
+
+        chapter_external_id é o `chapter.id` global do Suwayomi. Precisamos
+        descobrir mangaId + index — o /api/v1/chapter/<id> serve a web UI
+        (HTML) e nao a API, entao usamos GraphQL pra essa lookup.
+        """
+        if not (chapter_external_id and self.is_configured):
             return []
-        manga_id = data.get("mangaId")
-        chap_idx = data.get("index") if data.get("index") is not None else data.get("chapterNumber")
-        page_count = int(data.get("pageCount") or 0)
-        if not (manga_id and page_count):
+        try:
+            cid = int(chapter_external_id)
+        except (TypeError, ValueError):
             return []
-        out: list[PageDTO] = []
-        for n in range(page_count):
-            out.append(
-                PageDTO(
-                    index=n,
-                    url=f"{self.base_url}/api/v1/manga/{manga_id}/chapter/{chap_idx}/page/{n}",
-                )
+
+        try:
+            r = self.session.post(
+                f"{self.base_url}/api/graphql",
+                json={
+                    "query": "{ chapter(id: " + str(cid)
+                    + ") { id pageCount sourceOrder mangaId } }"
+                },
+                timeout=self.REQUEST_TIMEOUT,
             )
-        return out
+            r.raise_for_status()
+            ch = (r.json().get("data") or {}).get("chapter") or {}
+        except Exception as exc:
+            logger.warning("Suwayomi fetch_pages GraphQL falhou: %s", exc)
+            return []
+
+        manga_id = ch.get("mangaId")
+        # `sourceOrder` e o indice 0-based usado nas URLs REST de paginas;
+        # `index` (1-based) e o sequencial historico do capitulo.
+        idx = ch.get("sourceOrder")
+        if idx is None:
+            idx = ch.get("index")
+        page_count = int(ch.get("pageCount") or 0)
+
+        # pageCount=-1 significa que o Suwayomi ainda nao baixou as paginas;
+        # uma chamada ao endpoint do capitulo dispara o fetch + cache.
+        if page_count <= 0 and manga_id is not None and idx is not None:
+            primer = self._get(f"/api/v1/manga/{manga_id}/chapter/{idx}")
+            if isinstance(primer, dict):
+                page_count = int(primer.get("pageCount") or 0)
+
+        if not (manga_id is not None and idx is not None and page_count > 0):
+            return []
+
+        return [
+            PageDTO(
+                index=n,
+                url=f"{self.base_url}/api/v1/manga/{manga_id}/chapter/{idx}/page/{n}",
+            )
+            for n in range(page_count)
+        ]
 
     # ------------------------------------------------------------------
     # Health
