@@ -6,6 +6,10 @@ Permissão: IsAdminUser (only `is_staff`). Frontend deve esconder a rota
 
 from __future__ import annotations
 
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAdminUser
@@ -82,6 +86,103 @@ def trigger_healthcheck(request, source_id: str):
         return Response({"detail": "fonte não registrada"}, status=404)
     healthcheck_one.delay(source_id)
     return Response({"detail": "healthcheck enfileirado", "source_id": source_id, "queued_at": timezone.now().isoformat()}, status=202)
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def overview(request):
+    """KPIs gerais do painel: contagem de fontes por status, totais, etc."""
+    from employees.models import Manga, Chapter
+    User = get_user_model()
+
+    health_counts = {
+        s: 0 for s in [
+            SourceHealth.STATUS_UP,
+            SourceHealth.STATUS_DEGRADED,
+            SourceHealth.STATUS_DOWN,
+            SourceHealth.STATUS_UNKNOWN,
+        ]
+    }
+    for row in SourceHealth.objects.values("status").annotate(c=Count("source_id")):
+        health_counts[row["status"]] = row["c"]
+
+    enabled_count = sum(1 for _ in registry.iter_active())
+    known_count = len(registry.all_known_ids())
+
+    last_24h = timezone.now() - timedelta(hours=24)
+    # Combina total + falhas em um só roundtrip via aggregate condicional.
+    totals_24h = SourceHealthLog.objects.filter(checked_at__gte=last_24h).aggregate(
+        total=Count("id"),
+        failures=Count("id", filter=Q(success=False)),
+    )
+    log_total = totals_24h["total"] or 0
+    log_failures = totals_24h["failures"] or 0
+    error_rate_24h = (log_failures / log_total) if log_total else 0.0
+
+    # Visão por fonte com saúde + sparkline.
+    # Fetch unico de Source + SourceHealth (1 query via dict-map de healths)
+    # e por fonte uma query indexada de 20 latências. O index existente
+    # ("source", "-checked_at") garante que cada lookup é O(log n) + 20 rows.
+    sources = list(Source.objects.all().order_by("priority", "name"))
+    healths_map = {h.source_id: h for h in SourceHealth.objects.all()}
+
+    sources_summary = []
+    for src in sources:
+        health = healths_map.get(src.id)
+        recent_latencies = list(
+            SourceHealthLog.objects.filter(source_id=src.id)
+            .order_by("-checked_at")
+            .values_list("latency_ms", flat=True)[:20]
+        )
+        sources_summary.append({
+            "id": src.id,
+            "name": src.name,
+            "status": health.status if health else "UNKNOWN",
+            "down_for_seconds": health.down_for_seconds if health else 0,
+            "latency_avg_ms": health.avg_latency_ms_5m if health else 0,
+            "error_rate_5m": health.error_rate_5m if health else 0.0,
+            "sparkline": list(reversed(recent_latencies)),  # antigo → novo
+        })
+
+    # Activity feed: últimas 15 entradas (qualquer fonte/origem)
+    recent_activity = [
+        {
+            "checked_at": log.checked_at.isoformat(),
+            "source_id": log.source_id,
+            "endpoint": log.endpoint,
+            "origin": log.origin,
+            "success": log.success,
+            "latency_ms": log.latency_ms,
+            "status_code": log.status_code,
+            "error_class": log.error_class,
+        }
+        for log in SourceHealthLog.objects.select_related("source")
+        .order_by("-checked_at")[:15]
+    ]
+
+    return Response({
+        "sources": {
+            "enabled": enabled_count,
+            "known": known_count,
+            "by_status": health_counts,
+            "summary": sources_summary,
+        },
+        "library": {
+            "mangas": Manga.objects.count(),
+            "chapters": Chapter.objects.count(),
+        },
+        "users": {
+            "total": User.objects.count(),
+            "staff": User.objects.filter(is_staff=True).count(),
+        },
+        "telemetry_24h": {
+            "total_requests": log_total,
+            "failures": log_failures,
+            "error_rate": round(error_rate_24h, 4),
+        },
+        "recent_activity": recent_activity,
+        "generated_at": timezone.now().isoformat(),
+    })
 
 
 def _serialize_health(h):

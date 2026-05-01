@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * authoritative check still happens server-side at the API layer.
  */
 
-const PROTECTED_PREFIXES = ['/library', '/profile', '/settings'];
+const PROTECTED_PREFIXES = ['/library', '/profile', '/settings', '/mikoshi'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -28,5 +28,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/library/:path*', '/profile/:path*', '/settings/:path*'],
+  matcher: ['/library/:path*', '/profile/:path*', '/settings/:path*', '/mikoshi/:path*'],
 };

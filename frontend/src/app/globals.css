@@ -504,3 +504,112 @@ body.no-status-bar { padding-bottom: 0; }
   }
   .crt-flicker, .crt-scan { display: none; }
 }
+
+/* ─────────────────────────────────────────────
+ *  MIKOSHI / admin console — animations
+ * ───────────────────────────────────────────── */
+
+@keyframes mikoshi-grid-drift {
+  0%   { background-position: 0 0, 0 0; }
+  100% { background-position: 60px 60px, 60px 60px; }
+}
+
+@keyframes mikoshi-scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes mikoshi-pulse-up {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7); }
+  50%      { box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+}
+
+@keyframes mikoshi-pulse-down {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 116, 0.85); transform: translate(0, 0); }
+  10%      { transform: translate(1px, -1px); }
+  20%      { transform: translate(-1px, 1px); }
+  50%      { box-shadow: 0 0 0 8px rgba(225, 29, 116, 0); }
+}
+
+@keyframes mikoshi-pulse-degraded {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7); }
+  50%      { box-shadow: 0 0 0 5px rgba(250, 204, 21, 0); }
+}
+
+@keyframes mikoshi-decrypt {
+  0%   { letter-spacing: 0.5em; opacity: 0; filter: blur(8px); }
+  60%  { letter-spacing: 0.05em; opacity: 1; filter: blur(0); }
+  100% { letter-spacing: 0; opacity: 1; }
+}
+
+@keyframes mikoshi-glitch {
+  0%, 90%, 100% { transform: translate(0, 0); clip-path: inset(0 0 0 0); }
+  91%           { transform: translate(-2px, 0); clip-path: inset(20% 0 30% 0); }
+  93%           { transform: translate(3px, 0); clip-path: inset(60% 0 5% 0); }
+  95%           { transform: translate(-1px, 0); clip-path: inset(15% 0 50% 0); }
+  97%           { transform: translate(2px, 0); clip-path: inset(40% 0 25% 0); }
+}
+
+@keyframes mikoshi-blink {
+  50% { opacity: 0.3; }
+}
+
+@keyframes mikoshi-tick {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes mikoshi-counter {
+  from { transform: translateY(8px); opacity: 0; filter: blur(2px); }
+  to   { transform: translateY(0);   opacity: 1; filter: blur(0); }
+}
+
+@keyframes mikoshi-rotate {
+  to { transform: rotate(360deg); }
+}
+
+.mikoshi-grid-bg {
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.06) 1px, transparent 1px);
+  background-size: 60px 60px;
+  animation: mikoshi-grid-drift 28s linear infinite;
+}
+
+.mikoshi-scan-line {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.mikoshi-scan-line::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 80px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(34, 211, 238, 0.08) 50%,
+    transparent 100%);
+  animation: mikoshi-scan 8s linear infinite;
+}
+
+.mikoshi-decrypt   { animation: mikoshi-decrypt 0.9s cubic-bezier(.2,.8,.2,1) both; }
+.mikoshi-glitch    { animation: mikoshi-glitch 5s infinite; }
+.mikoshi-blink     { animation: mikoshi-blink 1.4s infinite; }
+.mikoshi-tick      { animation: mikoshi-tick 0.4s ease-out both; }
+.mikoshi-counter   { animation: mikoshi-counter 0.6s cubic-bezier(.2,.8,.2,1) both; }
+.mikoshi-rotate    { animation: mikoshi-rotate 14s linear infinite; }
+
+.mikoshi-dot-up        { animation: mikoshi-pulse-up 2s infinite; }
+.mikoshi-dot-down      { animation: mikoshi-pulse-down 1.4s infinite; }
+.mikoshi-dot-degraded  { animation: mikoshi-pulse-degraded 1.8s infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mikoshi-grid-bg, .mikoshi-scan-line::after,
+  .mikoshi-decrypt, .mikoshi-glitch, .mikoshi-blink,
+  .mikoshi-tick, .mikoshi-counter, .mikoshi-rotate,
+  .mikoshi-dot-up, .mikoshi-dot-down, .mikoshi-dot-degraded {
+    animation: none !important;
+  }
+}
