@@ -1,0 +1,66 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | Arasaka Nexus Admin{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="icon" type="image/svg+xml" href="/arasaka-mark.svg" />
+<link rel="shortcut icon" type="image/svg+xml" href="/arasaka-mark.svg" />
+<link rel="apple-touch-icon" href="/arasaka-mark.svg" />
+<style>
+  /* Cyberpunk-flavored sobre o admin Django padrão.
+     Mantém usabilidade nativa, só injeta cor e identidade. */
+  :root {
+    --primary: #dc2626;
+    --secondary: #b91c1c;
+    --accent: #22d3ee;
+    --link-fg: #dc2626;
+    --link-hover-color: #ff4444;
+    --link-selected-fg: #dc2626;
+  }
+  #header {
+    background: linear-gradient(90deg, #0a0a0a 0%, #1a0505 100%);
+    border-bottom: 2px solid #dc2626;
+    color: #f5f5f5;
+  }
+  #header a:link, #header a:visited { color: #f5f5f5; }
+  #branding h1 {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: 0.05em;
+  }
+  #branding h1 a:link, #branding h1 a:visited {
+    color: #f5f5f5;
+  }
+  #branding h1 a:link::before {
+    content: "▮ ";
+    color: #dc2626;
+  }
+  div.breadcrumbs {
+    background: #1a0505;
+    border-bottom: 1px solid #2a0a0a;
+    color: #f5f5f5;
+  }
+  div.breadcrumbs a { color: #22d3ee; }
+  .module h2, .module caption, .inline-group h2 {
+    background: #dc2626;
+    color: #fff;
+  }
+  .button, input[type=submit], input[type=button], .submit-row input, a.button {
+    background: #dc2626;
+    color: #fff;
+  }
+  .button:hover, input[type=submit]:hover, input[type=button]:hover {
+    background: #b91c1c;
+  }
+  a:link, a:visited { color: #b91c1c; }
+</style>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+  <a href="{% url 'admin:index' %}">{{ site_header|default:"Arasaka Nexus" }}</a>
+</h1>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

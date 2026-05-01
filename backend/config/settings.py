@@ -59,7 +59,9 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # Inclui templates/ na raiz do backend para customizar o admin Django
+        # (ex: templates/admin/base_site.html injeta favicon e branding Arasaka).
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
