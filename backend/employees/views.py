@@ -450,6 +450,51 @@ def proxy_cover_preview(request):
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
+def proxy_mihon_cover(request, external_id: str):
+    """Stream thumbnail Mihon (Suwayomi interno → cliente público).
+
+    URL pública: /api/cdn/mihon-cover/<inner>:<mid>/
+    Resolve internamente pra http://suwayomi:4567/api/v1/manga/<mid>/thumbnail.
+    """
+    from sources import registry as sources_registry
+
+    src_mihon = sources_registry.get("mihon")
+    if not src_mihon or not getattr(src_mihon, "is_configured", False):
+        raise Http404("mihon not configured")
+
+    if ":" not in external_id:
+        raise Http404("invalid external_id")
+    _, mid = external_id.split(":", 1)
+    try:
+        int(mid)
+    except (TypeError, ValueError):
+        raise Http404("invalid manga id")
+
+    upstream_url = f"{src_mihon.base_url}/api/v1/manga/{mid}/thumbnail"
+    try:
+        r = _requests.get(upstream_url, timeout=15, stream=True)
+    except Exception as exc:
+        logger.warning("mihon cover proxy falhou (%s): %s", upstream_url, exc)
+        raise Http404("upstream unavailable")
+
+    if r.status_code != 200:
+        r.close()
+        return HttpResponse(status=r.status_code)
+
+    content_type = r.headers.get("Content-Type", "image/jpeg")
+    response = StreamingHttpResponse(
+        r.iter_content(chunk_size=32 * 1024),
+        content_type=content_type,
+    )
+    # Cover muda raramente — Cloudflare cacheia agressivo.
+    response["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=2592000"
+    if cl := r.headers.get("Content-Length"):
+        response["Content-Length"] = cl
+    return response
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
 def proxy_mihon_image(request, chapter_id: int, page_index: int):
     """Stream uma página de capítulo Mihon via Suwayomi.
 

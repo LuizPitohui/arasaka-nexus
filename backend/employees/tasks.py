@@ -28,6 +28,23 @@ def _redis_for_locks() -> redis.Redis:
     return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
+def _normalize_mihon_cover(cover_url: str, external_id: str) -> str:
+    """Converte URLs de cover do Suwayomi (network interna Docker) em paths
+    relativos servidos pelo nosso proxy publico.
+
+    Suwayomi devolve covers como http://suwayomi:4567/api/v1/manga/<mid>/thumbnail
+    — esse host so existe na rede docker. O navegador do user nao alcança.
+    Trocamos pra /api/cdn/mihon-cover/<inner>:<mid>/ que vai pelo nosso proxy
+    (cacheado pelo Cloudflare 24h).
+    """
+    if not cover_url:
+        return ""
+    # URL vinda do Suwayomi → path relativo servido pelo nosso proxy
+    if "/api/v1/manga/" in cover_url and "/thumbnail" in cover_url:
+        return f"/api/cdn/mihon-cover/{external_id}/"
+    return cover_url
+
+
 def _persist_mihon_manga(manga_dto, *, fetch_chapters_for: str | None = None) -> tuple["Manga", bool, int]:
     """Cria/atualiza Manga + Chapters a partir de um MangaDTO Mihon.
 
@@ -48,6 +65,8 @@ def _persist_mihon_manga(manga_dto, *, fetch_chapters_for: str | None = None) ->
     if cr not in rating_choices:
         cr = "safe"
 
+    cover = _normalize_mihon_cover(manga_dto.cover_url or "", manga_dto.external_id)
+
     manga, created = Manga.objects.update_or_create(
         mangadex_id=storage_id,
         defaults={
@@ -55,7 +74,7 @@ def _persist_mihon_manga(manga_dto, *, fetch_chapters_for: str | None = None) ->
             "title": manga_dto.title,
             "alternative_title": "",
             "description": manga_dto.description or "",
-            "cover": manga_dto.cover_url or "",
+            "cover": cover,
             "author": manga_dto.author or "Desconhecido",
             "status": chapter_status,
             "content_rating": cr,
