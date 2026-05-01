@@ -221,7 +221,10 @@ MANGADEX_USER_AGENT = os.environ.get(
 MANGADEX_GLOBAL_RATE_PER_SECOND = float(os.environ.get("MANGADEX_GLOBAL_RATE_PER_SECOND", "4"))
 # /at-home/server tem teto de 40/min — usamos 35 para folga
 MANGADEX_AT_HOME_RATE_PER_MINUTE = int(os.environ.get("MANGADEX_AT_HOME_RATE_PER_MINUTE", "35"))
-MANGADEX_AT_HOME_CACHE_SECONDS = int(os.environ.get("MANGADEX_AT_HOME_CACHE_SECONDS", "600"))
+# Tokens MangaDex no baseUrl expiram ~15min apos emissao. Cacheamos por 8min
+# para garantir que usuarios que pegam URL no fim do TTL ainda tenham 7min
+# de validade. Se estourar (raro), o reader chama ?refresh=1 e reissue.
+MANGADEX_AT_HOME_CACHE_SECONDS = int(os.environ.get("MANGADEX_AT_HOME_CACHE_SECONDS", "480"))
 MANGADEX_REQUEST_TIMEOUT = int(os.environ.get("MANGADEX_REQUEST_TIMEOUT", "20"))
 
 # --- Logging ---

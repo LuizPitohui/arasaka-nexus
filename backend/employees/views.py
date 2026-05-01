@@ -265,6 +265,10 @@ def get_chapter_pages(request, chapter_id: int):
     prev_chapter_id = siblings[idx - 1] if idx > 0 else None
     next_chapter_id = siblings[idx + 1] if idx < len(siblings) - 1 else None
 
+    # ?refresh=1 bypasses our /at-home/server cache. Reader uses this when a
+    # page 404s (MangaDex baseUrl tokens expire ~15min after issuance).
+    force_refresh = request.query_params.get("refresh") in ("1", "true", "yes")
+
     pages: list = []
     source = "LOCAL"
     local_images = ChapterImage.objects.filter(chapter=chapter).order_by("order")
@@ -272,7 +276,7 @@ def get_chapter_pages(request, chapter_id: int):
         pages = ChapterImageSerializer(local_images, many=True).data
     elif chapter.mangadex_id:
         source = "MANGADEX_STREAM"
-        pages = get_mangadex_pages(chapter.mangadex_id)
+        pages = get_mangadex_pages(chapter.mangadex_id, force_refresh=force_refresh)
 
     return Response(
         {

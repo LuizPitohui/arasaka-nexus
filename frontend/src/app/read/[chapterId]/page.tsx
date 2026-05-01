@@ -97,6 +97,29 @@ export default function ReaderPage() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // MangaDex baseUrl tokens expiram ~15min apos emissao. Quando uma imagem
+  // 404a (token expirou), refazemos /read/<id>/?refresh=1 e substituimos as
+  // URLs em memoria. Usamos um ref-guard para evitar refresh em loop quando
+  // multiplas imgs falham simultaneamente.
+  const refreshingRef = useRef(false);
+  const handlePageError = useCallback(() => {
+    const chapterId = params?.chapterId;
+    if (!chapterId || refreshingRef.current) return;
+    refreshingRef.current = true;
+    api
+      .get<ReaderData>(`/read/${chapterId}/?refresh=1`, { auth: false })
+      .then((d) => {
+        setData(d);
+      })
+      .catch((err) => console.error('refresh pages failed', err))
+      .finally(() => {
+        // Mantem locked por 5s para nao spammar mesmo que algumas imgs falhem em sequencia.
+        setTimeout(() => {
+          refreshingRef.current = false;
+        }, 5000);
+      });
+  }, [params?.chapterId]);
+
   useEffect(() => {
     const local = loadPrefs();
     setPrefs(local);
@@ -474,6 +497,7 @@ export default function ReaderPage() {
                   alt={`Page ${index + 1}`}
                   className={`block select-none mx-auto ${fitClasses[prefs.fit]}`}
                   loading={index < 3 ? 'eager' : 'lazy'}
+                  onError={handlePageError}
                 />
               </div>
             ))}
@@ -492,6 +516,7 @@ export default function ReaderPage() {
                   alt={`Page ${index + 1}`}
                   className="block w-full h-auto select-none"
                   loading={index < 3 ? 'eager' : 'lazy'}
+                  onError={handlePageError}
                 />
               </div>
             ))}
@@ -499,11 +524,11 @@ export default function ReaderPage() {
         )}
 
         {prefs.mode === 'paged' && (
-          <PagedView page={data.pages[pageIndex]} fitClass={fitClasses[prefs.fit]} onPrev={goPrevPage} onNext={goNextPage} />
+          <PagedView page={data.pages[pageIndex]} fitClass={fitClasses[prefs.fit]} onPrev={goPrevPage} onNext={goNextPage} onError={handlePageError} />
         )}
 
         {prefs.mode === 'double' && (
-          <DoubleView left={data.pages[pageIndex]} right={data.pages[pageIndex + 1]} onPrev={goPrevPage} onNext={goNextPage} />
+          <DoubleView left={data.pages[pageIndex]} right={data.pages[pageIndex + 1]} onPrev={goPrevPage} onNext={goNextPage} onError={handlePageError} />
         )}
       </div>
 
@@ -590,8 +615,8 @@ function HUDButton({
   );
 }
 
-function PagedView({ page, fitClass, onPrev, onNext }: {
-  page: ReaderPage | undefined; fitClass: string; onPrev: () => void; onNext: () => void;
+function PagedView({ page, fitClass, onPrev, onNext, onError }: {
+  page: ReaderPage | undefined; fitClass: string; onPrev: () => void; onNext: () => void; onError: () => void;
 }) {
   if (!page) return null;
   return (
@@ -628,6 +653,7 @@ function PagedView({ page, fitClass, onPrev, onNext }: {
           src={resolvePageUrl(page.image)}
           alt={`Page ${page.order + 1}`}
           className={`mx-auto block ${fitClass}`}
+          onError={onError}
         />
       </div>
       <ChevronEdge side="next" onClick={onNext} />
@@ -635,8 +661,8 @@ function PagedView({ page, fitClass, onPrev, onNext }: {
   );
 }
 
-function DoubleView({ left, right, onPrev, onNext }: {
-  left: ReaderPage | undefined; right: ReaderPage | undefined; onPrev: () => void; onNext: () => void;
+function DoubleView({ left, right, onPrev, onNext, onError }: {
+  left: ReaderPage | undefined; right: ReaderPage | undefined; onPrev: () => void; onNext: () => void; onError: () => void;
 }) {
   if (!left) return null;
   return (
@@ -658,9 +684,9 @@ function DoubleView({ left, right, onPrev, onNext }: {
           maxHeight: '92vh',
         }}
       >
-        <img src={resolvePageUrl(left.image)} alt={`Page ${left.order + 1}`} className="max-h-[92vh] w-auto h-auto" />
+        <img src={resolvePageUrl(left.image)} alt={`Page ${left.order + 1}`} className="max-h-[92vh] w-auto h-auto" onError={onError} />
         {right && (
-          <img src={resolvePageUrl(right.image)} alt={`Page ${right.order + 1}`} className="max-h-[92vh] w-auto h-auto" />
+          <img src={resolvePageUrl(right.image)} alt={`Page ${right.order + 1}`} className="max-h-[92vh] w-auto h-auto" onError={onError} />
         )}
       </div>
       <ChevronEdge side="next" onClick={onNext} />

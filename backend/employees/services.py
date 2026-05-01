@@ -29,14 +29,20 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------------------------------------
 # Reader helper (used by the chapter pages endpoint)
 # ----------------------------------------------------------------------
-def get_mangadex_pages(mangadex_chapter_id: str) -> list[dict[str, Any]]:
+def get_mangadex_pages(
+    mangadex_chapter_id: str, *, force_refresh: bool = False
+) -> list[dict[str, Any]]:
     """Return the list of page URLs for a given MangaDex chapter id.
 
     Uses the client's cache so repeated reads of the same chapter don't re-hit
-    the rate-limited ``/at-home/server`` endpoint.
+    the rate-limited ``/at-home/server`` endpoint. The MangaDex ``baseUrl``
+    token is only valid for ~15 minutes — pass ``force_refresh=True`` (e.g.
+    when the reader gets a 404 on a page) to skip the cache and reissue.
     """
     try:
-        data = get_client().get_at_home_server(mangadex_chapter_id)
+        data = get_client().get_at_home_server(
+            mangadex_chapter_id, force_refresh=force_refresh
+        )
     except Exception as exc:
         logger.exception("Falha ao obter páginas do MangaDex para %s: %s", mangadex_chapter_id, exc)
         return []
