@@ -84,4 +84,4 @@ class ReadingProgressAdmin(admin.ModelAdmin):
     list_display = ("user", "chapter", "page_number", "completed", "updated_at")
     list_filter = ("completed",)
     search_fields = ("user__username", "chapter__manga__title")
-    autocomplete_fields = ("user", "chapter")
+    raw_id_fields = ("user", "chapter")

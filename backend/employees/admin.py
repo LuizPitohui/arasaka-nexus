@@ -20,4 +20,5 @@ class MangaAdmin(admin.ModelAdmin):
 class ChapterAdmin(admin.ModelAdmin):
     list_display = ('manga', 'number', 'title', 'release_date')
     list_filter = ('manga',)
+    search_fields = ('number', 'title', 'manga__title')
     inlines = [ChapterImageInline] # <--- AQUI ESTÁ A MÁGICA
