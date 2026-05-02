@@ -34,20 +34,43 @@ def is_configured() -> bool:
     return bool(settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY)
 
 
-def _private_key_pem() -> str | None:
-    """Decoda a chave privada base64 → PEM string.
+_vapid_cache = None
 
-    pywebpush espera string PEM (ele chama .encode() internamente — passar
-    bytes da AttributeError 'bytes' object has no attribute encode).
+
+def _vapid() -> "object | None":
+    """Devolve uma instancia ``Vapid`` pronta pra usar em pywebpush.
+
+    pywebpush.webpush() aceita o `vapid_private_key` como:
+      - dict (claims) → tratado como JWK
+      - str → tratado como PATH de arquivo (.encode() interno quebra
+        se passarmos bytes do PEM)
+      - Vapid object → caminho oficial sem ambiguidade
+
+    A gente decoda o PEM (base64 single-line do .env) UMA vez e cacheia
+    o Vapid object pra evitar reparse a cada push.
     """
+    global _vapid_cache
+    if _vapid_cache is not None:
+        return _vapid_cache
+
     raw = settings.VAPID_PRIVATE_KEY
     if not raw:
         return None
+
     try:
-        return base64.b64decode(raw).decode("ascii")
+        pem_bytes = base64.b64decode(raw)
     except Exception:
-        # Compat: se alguem colou o PEM cru (multiline) direto na env.
-        return raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
+        # Compat: PEM cru multiline direto na env.
+        pem_bytes = raw.encode("ascii") if isinstance(raw, str) else raw
+
+    try:
+        from py_vapid import Vapid
+
+        _vapid_cache = Vapid.from_pem(pem_bytes)
+        return _vapid_cache
+    except Exception as exc:
+        logger.error("VAPID: falha carregando chave: %s", exc)
+        return None
 
 
 def send_to_subscription(subscription, payload: dict) -> bool:
@@ -67,8 +90,8 @@ def send_to_subscription(subscription, payload: dict) -> bool:
 
     from .models import PushSubscription
 
-    pem = _private_key_pem()
-    if not pem:
+    vapid_obj = _vapid()
+    if vapid_obj is None:
         return False
 
     try:
@@ -81,7 +104,7 @@ def send_to_subscription(subscription, payload: dict) -> bool:
                 },
             },
             data=json.dumps(payload),
-            vapid_private_key=pem,
+            vapid_private_key=vapid_obj,
             vapid_claims={"sub": settings.VAPID_SUBJECT},
             ttl=24 * 3600,  # se device offline 24h, descarta
         )
