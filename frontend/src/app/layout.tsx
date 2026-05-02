@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Toaster } from 'sonner';
 
 import BootSequence from '@/components/BootSequence';
@@ -6,6 +6,7 @@ import { CookieConsent } from '@/components/CookieConsent';
 import CrtOverlay from '@/components/CrtOverlay';
 import { FooterShell } from '@/components/FooterShell';
 import { HeaderShell } from '@/components/HeaderShell';
+import { PWAInit } from '@/components/PWAInit';
 import RouteTransition from '@/components/RouteTransition';
 import StatusBar from '@/components/StatusBar';
 
@@ -34,7 +35,15 @@ export const metadata: Metadata = {
   icons: {
     icon: '/arasaka-mark.svg',
     shortcut: '/arasaka-mark.svg',
-    apple: '/arasaka-mark.svg',
+    // iOS Safari "Add to Home Screen" prefere PNG opaco 180x180
+    apple: '/apple-touch-icon.png',
+  },
+  // PWA — barra superior do iOS standalone usa essa cor; Android usa
+  // o theme_color do manifest.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Nexus',
   },
   // Aberto pra crawlers de preview social (WhatsApp/X/Discord/Slack/etc)
   openGraph: {
@@ -65,6 +74,16 @@ export const metadata: Metadata = {
   },
 };
 
+// Viewport vem em export separado em Next.js 14+. Inclui theme-color
+// (Chrome/Android usam pra colorir a status bar) + viewport-fit pra
+// PWA standalone respeitar safe-area no iOS notch.
+export const viewport: Viewport = {
+  themeColor: '#dc2626',
+  viewportFit: 'cover',
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -79,6 +98,7 @@ export default function RootLayout({
         <RouteTransition />
         <StatusBar />
         <CrtOverlay />
+        <PWAInit />
         <Toaster
           theme="dark"
           position="top-right"
