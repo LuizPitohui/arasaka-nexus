@@ -173,6 +173,11 @@ class PushSubscription(models.Model):
     user_agent = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)
+    # Contadores agregados pra dashboard /mikoshi/admin. Atualizados via F()
+    # no send_to_subscription — sem race se 2 workers entregarem em paralelo.
+    delivery_count = models.PositiveIntegerField(default=0)
+    failure_count = models.PositiveIntegerField(default=0)
+    last_delivery_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-last_seen_at"]

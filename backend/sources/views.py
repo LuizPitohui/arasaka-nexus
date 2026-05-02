@@ -122,6 +122,93 @@ def mihon_sub_sources(request):
 
 @api_view(["GET"])
 @permission_classes([IsAdminUser])
+def push_metrics(request):
+    """Dashboard /mikoshi/admin: agregados de Web Push.
+
+    Inclui:
+      - subs_total / subs_active_7d (last_seen_at recente)
+      - users_with_push (distinct user com >=1 sub)
+      - users_immediate / users_daily (Profile.digest_mode breakdown)
+      - delivery_total / failure_total (sum dos contadores agregados)
+      - delivery_rate (delivered / (delivered + failed))
+      - top_devices por user_agent simplificado (Chrome/Firefox/Edge/etc)
+      - last_delivery_at_global (mais recente de qualquer sub)
+    """
+    from accounts.models import Profile, PushSubscription
+    from django.db.models import Count, Sum, Max
+
+    User = get_user_model()
+    last_7d = timezone.now() - timedelta(days=7)
+
+    sub_aggs = PushSubscription.objects.aggregate(
+        total=Count("id"),
+        active_7d=Count("id", filter=Q(last_seen_at__gte=last_7d)),
+        delivery_total=Sum("delivery_count"),
+        failure_total=Sum("failure_count"),
+        last_delivery=Max("last_delivery_at"),
+    )
+
+    users_with_push = (
+        PushSubscription.objects.values("user_id").distinct().count()
+    )
+
+    profile_modes = Profile.objects.values("digest_mode").annotate(c=Count("id"))
+    digest_breakdown = {row["digest_mode"]: row["c"] for row in profile_modes}
+
+    # Browser breakdown via heuristica simples (regex no UA). Chrome/Edge
+    # compartilham token; usamos ordem mais especifica → mais geral.
+    devices: dict[str, int] = {}
+    for sub in PushSubscription.objects.values_list("user_agent", flat=True):
+        ua = (sub or "").lower()
+        if "samsungbrowser" in ua:
+            key = "samsung_internet"
+        elif "edg/" in ua or "edge/" in ua:
+            key = "edge"
+        elif "firefox" in ua:
+            key = "firefox"
+        elif "chrome" in ua or "chromium" in ua:
+            key = "chrome"
+        elif "safari" in ua:
+            key = "safari"
+        elif not ua:
+            key = "unknown"
+        else:
+            key = "other"
+        devices[key] = devices.get(key, 0) + 1
+
+    delivery_total = sub_aggs["delivery_total"] or 0
+    failure_total = sub_aggs["failure_total"] or 0
+    denom = delivery_total + failure_total
+    delivery_rate = (delivery_total / denom) if denom else 0.0
+
+    return Response({
+        "subscriptions": {
+            "total": sub_aggs["total"] or 0,
+            "active_7d": sub_aggs["active_7d"] or 0,
+            "by_device": devices,
+        },
+        "users": {
+            "total": User.objects.count(),
+            "with_push": users_with_push,
+            "digest_immediate": digest_breakdown.get("immediate", 0),
+            "digest_daily": digest_breakdown.get("daily", 0),
+        },
+        "delivery": {
+            "delivered_total": delivery_total,
+            "failed_total": failure_total,
+            "delivery_rate": round(delivery_rate, 4),
+            "last_delivery_at": (
+                sub_aggs["last_delivery"].isoformat()
+                if sub_aggs["last_delivery"]
+                else None
+            ),
+        },
+        "generated_at": timezone.now().isoformat(),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
 def overview(request):
     """KPIs gerais do painel: contagem de fontes por status, totais, etc."""
     from employees.models import Manga, Chapter

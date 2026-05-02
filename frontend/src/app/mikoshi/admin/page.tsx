@@ -42,21 +42,53 @@ type Overview = {
   generated_at: string;
 };
 
+type PushMetrics = {
+  subscriptions: {
+    total: number;
+    active_7d: number;
+    by_device: Record<string, number>;
+  };
+  users: {
+    total: number;
+    with_push: number;
+    digest_immediate: number;
+    digest_daily: number;
+  };
+  delivery: {
+    delivered_total: number;
+    failed_total: number;
+    delivery_rate: number;
+    last_delivery_at: string | null;
+  };
+  generated_at: string;
+};
+
 const POLL_MS = 30_000;
 
 export default function OverviewPage() {
   const [data, setData] = useState<Overview | null>(null);
+  const [push, setPush] = useState<PushMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     const tick = async () => {
       try {
-        const fresh = await api.get<Overview>('/admin/sources/overview/');
-        if (alive) {
-          setData(fresh);
+        // Paraleliza overview + push metrics. Se push falhar (ex:
+        // VAPID nao configurada e endpoint vazio), nao deve quebrar
+        // o resto do dashboard — usamos Promise.allSettled.
+        const [ov, pm] = await Promise.allSettled([
+          api.get<Overview>('/admin/sources/overview/'),
+          api.get<PushMetrics>('/admin/sources/push-metrics/'),
+        ]);
+        if (!alive) return;
+        if (ov.status === 'fulfilled') {
+          setData(ov.value);
           setError(null);
+        } else {
+          setError((ov.reason as Error).message);
         }
+        if (pm.status === 'fulfilled') setPush(pm.value);
       } catch (e) {
         if (alive) setError((e as Error).message);
       }
@@ -114,6 +146,9 @@ export default function OverviewPage() {
         <Kpi label="Operadores" value={data.users.total} />
         <Kpi label="Staff" value={data.users.staff} accent="cyan" />
       </section>
+
+      {/* Push panel — visivel so quando endpoint respondeu (VAPID configurado) */}
+      {push && <PushPanel push={push} />}
 
       <p className="text-[9px] font-mono uppercase tracking-[0.3em] text-[var(--fg-muted)] flex justify-between flex-wrap gap-2">
         <span>last sync :: {new Date(data.generated_at).toLocaleString('pt-BR')}</span>
@@ -287,6 +322,97 @@ function ActivityFeed({ activity }: { activity: Activity[] }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+/* ─────────────── Push metrics panel ─────────────── */
+function PushPanel({ push }: { push: PushMetrics }) {
+  const deliveryPct = (push.delivery.delivery_rate * 100).toFixed(1);
+  const lastDelivery = push.delivery.last_delivery_at
+    ? new Date(push.delivery.last_delivery_at).toLocaleString('pt-BR')
+    : '—';
+  const deviceEntries = Object.entries(push.subscriptions.by_device).sort(
+    (a, b) => b[1] - a[1],
+  );
+
+  return (
+    <section className="space-y-3">
+      <header className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--fg-secondary)] font-mono">
+          ◢ web push telemetry
+        </span>
+        <span className="text-[9px] uppercase tracking-[0.25em] text-[var(--fg-muted)] font-mono">
+          last delivery :: {lastDelivery}
+        </span>
+      </header>
+
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+        <Kpi
+          label="Subs ativas"
+          value={push.subscriptions.total}
+          hint={`${push.subscriptions.active_7d} ativas 7d`}
+          accent="cyan"
+        />
+        <Kpi
+          label="Users c/ push"
+          value={push.users.with_push}
+          hint={`${push.users.with_push}/${push.users.total} total`}
+          accent="cyan"
+        />
+        <Kpi
+          label="Imediato"
+          value={push.users.digest_immediate}
+          accent="green"
+        />
+        <Kpi
+          label="Diário"
+          value={push.users.digest_daily}
+          accent="yellow"
+        />
+        <Kpi
+          label="Entregues"
+          value={push.delivery.delivered_total.toLocaleString('pt-BR')}
+          hint={`${push.delivery.failed_total} falhas`}
+          accent="green"
+        />
+        <Kpi
+          label="Delivery rate"
+          value={`${deliveryPct}%`}
+          hint={
+            push.delivery.delivered_total + push.delivery.failed_total === 0
+              ? 'sem dados'
+              : 'lifetime'
+          }
+          accent={
+            push.delivery.delivery_rate < 0.9 &&
+            push.delivery.delivered_total + push.delivery.failed_total > 10
+              ? 'magenta'
+              : 'cyan'
+          }
+        />
+      </div>
+
+      {deviceEntries.length > 0 && (
+        <div className="border border-[var(--fg-faint)] bg-[var(--bg-terminal)]/70 backdrop-blur-sm font-mono p-3">
+          <div className="text-[9px] uppercase tracking-[0.3em] text-[var(--fg-muted)] mb-2">
+            // BY_DEVICE
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {deviceEntries.map(([key, count]) => (
+              <div
+                key={key}
+                className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em]"
+              >
+                <span className="text-[var(--fg-muted)]">{key}</span>
+                <span className="text-[var(--neon-cyan)] tabular-nums">
+                  {count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

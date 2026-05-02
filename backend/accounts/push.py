@@ -56,7 +56,12 @@ def send_to_subscription(subscription, payload: dict) -> bool:
 
     # Import lazy: pywebpush traz cryptography/cffi pesado, nao queremos
     # carregar na boot do Django se push esta desabilitado.
+    from django.db.models import F
+    from django.utils import timezone
+
     from pywebpush import WebPushException, webpush
+
+    from .models import PushSubscription
 
     pem = _private_key_pem()
     if not pem:
@@ -76,6 +81,11 @@ def send_to_subscription(subscription, payload: dict) -> bool:
             vapid_claims={"sub": settings.VAPID_SUBJECT},
             ttl=24 * 3600,  # se device offline 24h, descarta
         )
+        # Counter agregado pra dashboard. F() = sem race entre workers.
+        PushSubscription.objects.filter(pk=subscription.pk).update(
+            delivery_count=F("delivery_count") + 1,
+            last_delivery_at=timezone.now(),
+        )
         return True
     except WebPushException as exc:
         # 410 Gone, 404 Not Found = endpoint morto. Limpa do banco.
@@ -94,9 +104,15 @@ def send_to_subscription(subscription, payload: dict) -> bool:
                 subscription.id,
                 exc,
             )
+            PushSubscription.objects.filter(pk=subscription.pk).update(
+                failure_count=F("failure_count") + 1,
+            )
         return False
     except Exception as exc:
         logger.warning("push: erro inesperado pra sub %s: %s", subscription.id, exc)
+        PushSubscription.objects.filter(pk=subscription.pk).update(
+            failure_count=F("failure_count") + 1,
+        )
         return False
 
 
