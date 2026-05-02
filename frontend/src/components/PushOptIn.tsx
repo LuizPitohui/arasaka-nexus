@@ -22,6 +22,7 @@ import {
   enablePush,
   getCurrentSubscription,
   permissionState,
+  sendTestPush,
   supportsPush,
 } from '@/lib/push';
 
@@ -80,6 +81,24 @@ export function PushOptIn() {
     } catch {
       setState('on');
       toast.error('// FALHA AO DESATIVAR');
+    }
+  };
+
+  const test = async () => {
+    const id = toast.loading('// DISPATCHING TEST...');
+    try {
+      const { delivered } = await sendTestPush();
+      toast.dismiss(id);
+      if (delivered > 0) {
+        toast.success(`// PUSH ENVIADO (${delivered} dispositivo(s))`);
+      } else {
+        toast.error(
+          '// FALHA NA ENTREGA — verifica permissao do browser ou re-ativa o toggle',
+        );
+      }
+    } catch {
+      toast.dismiss(id);
+      toast.error('// ERRO INESPERADO');
     }
   };
 
@@ -151,24 +170,41 @@ export function PushOptIn() {
             BLOQUEADO
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={state === 'on' ? disable : enable}
-            disabled={state === 'busy'}
-            className="mono text-xs uppercase tracking-widest px-4 py-2 transition-colors disabled:opacity-50"
-            style={{
-              background: state === 'on' ? 'transparent' : 'var(--arasaka-red)',
-              color: state === 'on' ? 'var(--fg-primary)' : '#fff',
-              border: `1px solid ${state === 'on' ? 'var(--border-mid)' : 'var(--arasaka-red)'}`,
-              fontWeight: 700,
-            }}
-          >
-            {state === 'busy'
-              ? '...'
-              : state === 'on'
-                ? 'DESATIVAR'
-                : 'ATIVAR'}
-          </button>
+          <div className="flex flex-col gap-2 items-end">
+            <button
+              type="button"
+              onClick={state === 'on' ? disable : enable}
+              disabled={state === 'busy'}
+              className="mono text-xs uppercase tracking-widest px-4 py-2 transition-colors disabled:opacity-50"
+              style={{
+                background:
+                  state === 'on' ? 'transparent' : 'var(--arasaka-red)',
+                color: state === 'on' ? 'var(--fg-primary)' : '#fff',
+                border: `1px solid ${state === 'on' ? 'var(--border-mid)' : 'var(--arasaka-red)'}`,
+                fontWeight: 700,
+              }}
+            >
+              {state === 'busy'
+                ? '...'
+                : state === 'on'
+                  ? 'DESATIVAR'
+                  : 'ATIVAR'}
+            </button>
+            {state === 'on' && (
+              <button
+                type="button"
+                onClick={test}
+                className="mono text-[10px] uppercase tracking-widest px-3 py-1 transition-colors"
+                style={{
+                  background: 'transparent',
+                  color: 'var(--neon-cyan)',
+                  border: '1px solid var(--neon-cyan)',
+                }}
+              >
+                ▸ ENVIAR TESTE
+              </button>
+            )}
+          </div>
         )}
       </div>
     </section>

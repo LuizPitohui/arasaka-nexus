@@ -9,6 +9,7 @@ from .views import (
     profile_me,
     push_status,
     push_subscribe,
+    push_test,
     push_unsubscribe,
 )
 
@@ -23,5 +24,6 @@ urlpatterns = [
     path("push/subscribe/", push_subscribe, name="push-subscribe"),
     path("push/unsubscribe/", push_unsubscribe, name="push-unsubscribe"),
     path("push/status/", push_status, name="push-status"),
+    path("push/test/", push_test, name="push-test"),
     path("", include(router.urls)),
 ]

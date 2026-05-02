@@ -254,6 +254,36 @@ def push_status(request):
     return Response({"subscriptions": count})
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def push_test(request):
+    """Manda 1 push de teste pro proprio user (todas as subs).
+
+    Util pro user confirmar que ativacao funcionou sem esperar capitulo
+    novo. Devolve {delivered: N} — 0 indica falha (VAPID nao configurada,
+    permissao revogada no browser, endpoint expirado, etc).
+    """
+    from .push import is_configured, send_to_user
+
+    if not is_configured():
+        return Response(
+            {"error": "push-not-configured"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    delivered = send_to_user(
+        request.user,
+        title="Arasaka Nexus",
+        body="Notificacoes funcionando. Voce vai receber capitulos novos por aqui.",
+        url="/profile",
+        tag="push-test",
+    )
+    return Response(
+        {"delivered": delivered},
+        status=status.HTTP_200_OK if delivered else status.HTTP_502_BAD_GATEWAY,
+    )
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def library_overview(request):

@@ -87,6 +87,11 @@ export async function enablePush(): Promise<PushSubscription> {
   return sub;
 }
 
+/** Manda 1 push de teste pro proprio user (todas as subs no backend). */
+export async function sendTestPush(): Promise<{ delivered: number }> {
+  return api.post<{ delivered: number }>('/accounts/push/test/', {});
+}
+
 /** Cancela no client + remove do backend. */
 export async function disablePush(): Promise<void> {
   const sub = await getCurrentSubscription();
