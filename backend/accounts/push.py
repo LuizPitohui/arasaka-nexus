@@ -34,16 +34,20 @@ def is_configured() -> bool:
     return bool(settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY)
 
 
-def _private_key_pem() -> bytes | None:
-    """Decoda a chave privada base64 → PEM bytes (cacheada via lru_cache)."""
+def _private_key_pem() -> str | None:
+    """Decoda a chave privada base64 → PEM string.
+
+    pywebpush espera string PEM (ele chama .encode() internamente — passar
+    bytes da AttributeError 'bytes' object has no attribute encode).
+    """
     raw = settings.VAPID_PRIVATE_KEY
     if not raw:
         return None
     try:
-        return base64.b64decode(raw)
+        return base64.b64decode(raw).decode("ascii")
     except Exception:
-        # Compat: se alguem colou o PEM cru direto na env, devolve as is.
-        return raw.encode("utf-8") if isinstance(raw, str) else raw
+        # Compat: se alguem colou o PEM cru (multiline) direto na env.
+        return raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
 
 
 def send_to_subscription(subscription, payload: dict) -> bool:
