@@ -121,6 +121,41 @@ class ReadingListItem(models.Model):
         ordering = ["position", "added_at"]
 
 
+class PushSubscription(models.Model):
+    """Web Push subscription por dispositivo.
+
+    Cada navegador/dispositivo do usuario gera um endpoint unico (Mozilla,
+    FCM, WNS, etc). Guardamos os 3 campos exigidos pelo Web Push protocol
+    (endpoint + duas chaves do payload encryption) e usamos pra disparar
+    notificacoes via pywebpush.
+
+    Endpoints podem expirar (FCM gira tokens) — quando uma push falha com
+    410 Gone / 404, o sender chama .delete() pra nao tentar de novo.
+
+    `tag` opcional permite agrupar/substituir notificacoes do mesmo tipo
+    (ex: 5 capitulos novos do mesmo manga viram 1 so).
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="push_subscriptions",
+    )
+    endpoint = models.TextField(unique=True)
+    p256dh = models.CharField(max_length=128)
+    auth = models.CharField(max_length=64)
+    user_agent = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-last_seen_at"]
+        indexes = [models.Index(fields=["user", "-last_seen_at"])]
+
+    def __str__(self):
+        return f"PushSub<{self.user.username}@{self.endpoint[:40]}…>"
+
+
 class ReadingProgress(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

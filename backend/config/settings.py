@@ -281,6 +281,23 @@ FLARESOLVERR_URL = os.environ.get("FLARESOLVERR_URL", "")
 #     SOURCES_ENABLED=mangadex,mangaplus,mihon
 SUWAYOMI_URL = os.environ.get("SUWAYOMI_URL", "")
 
+# --- Web Push (notificacoes de capitulo novo) ---
+# Gere as chaves uma vez com:
+#     python manage.py generate_vapid
+# Cola a private key (PEM, multiline) em VAPID_PRIVATE_KEY e a public
+# (base64url) em VAPID_PUBLIC_KEY. A public tambem vai pro frontend em
+# NEXT_PUBLIC_VAPID_PUBLIC_KEY pra subscribe() funcionar.
+# VAPID_SUBJECT e contato pra os push services (FCM/Mozilla/etc) reportarem
+# abuso — DEVE ser mailto: ou https:// com dominio que voce controla.
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:contact@arasaka.fun")
+# Notificacao so pra capitulos publicados nas ultimas N horas (evita
+# spam em backfill de obra recem-importada com 800 capitulos).
+PUSH_NEW_CHAPTER_MAX_AGE_HOURS = int(
+    os.environ.get("PUSH_NEW_CHAPTER_MAX_AGE_HOURS", "24")
+)
+
 # --- Cloudflare Turnstile (bot challenge em /login + /register) ---
 # Vazio = desabilitado (dev local sem chave). Em prod precisa preencher
 # com a Secret Key do widget criado em https://dash.cloudflare.com/?to=/:account/turnstile.

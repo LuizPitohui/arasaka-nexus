@@ -624,3 +624,61 @@ def task_cleanup_orphans():
         candidates.update(is_active=False)
         logger.info("cleanup_orphans desativou %d mangás", count)
     return {"status": "ok", "deactivated": count}
+
+
+# ---------------------------------------------------------------------
+# Push notifications: capitulo novo
+# ---------------------------------------------------------------------
+@shared_task(name="employees.notify_chapter_new")
+def notify_chapter_new(chapter_id: int) -> dict:
+    """Push notification pra todos os usuarios que favoritaram esse manga.
+
+    Acionado pelo signal post_save de Chapter (so capitulos created=True
+    e publicados nas ultimas N horas — vide signals.py).
+
+    Truncamos o titulo do capitulo no body porque WebPush tem limite
+    pratico de payload (~3KB pos-encryption).
+    """
+    from accounts.models import Favorite
+    from accounts.push import is_configured, send_to_user
+
+    if not is_configured():
+        return {"status": "skipped", "reason": "vapid-not-configured"}
+
+    try:
+        chapter = Chapter.objects.select_related("manga").only(
+            "id", "number", "title", "translated_language",
+            "manga__id", "manga__title",
+        ).get(id=chapter_id)
+    except Chapter.DoesNotExist:
+        return {"status": "skipped", "reason": "chapter-gone"}
+
+    manga = chapter.manga
+    favoriters = (
+        Favorite.objects.filter(manga=manga)
+        .select_related("user")
+        .only("user__id")
+    )
+
+    chapter_label = f"Cap. {chapter.number}"
+    if chapter.title:
+        suffix = chapter.title[:60]
+        chapter_label = f"{chapter_label} — {suffix}"
+
+    title = manga.title[:80]
+    body = f"{chapter_label} disponivel pra leitura."
+    url = f"/read/{chapter.id}/"
+    # tag por manga: notificacao nova substitui a anterior do mesmo manga
+    # (evita pilha de 5 push se 5 capitulos chegarem em sequencia rapida).
+    tag = f"manga-{manga.id}"
+
+    sent = 0
+    for fav in favoriters.iterator(chunk_size=200):
+        sent += send_to_user(fav.user, title=title, body=body, url=url, tag=tag)
+
+    return {
+        "status": "ok",
+        "chapter_id": chapter_id,
+        "manga_id": manga.id,
+        "delivered": sent,
+    }

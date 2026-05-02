@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Calendar, Lock, Save, Shield, ShieldAlert } from 'lucide-react';
 
 import Loader from '@/components/Loader';
+import { PushOptIn } from '@/components/PushOptIn';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
 
@@ -389,6 +390,8 @@ export default function ProfilePage() {
             {saving ? 'Salvando...' : 'Salvar alterações'}
           </button>
         </form>
+
+        <PushOptIn />
       </div>
     </main>
   );

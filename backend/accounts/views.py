@@ -10,7 +10,14 @@ from rest_framework.response import Response
 
 from employees.serializers import MangaListSerializer
 
-from .models import Favorite, Profile, ReadingList, ReadingListItem, ReadingProgress
+from .models import (
+    Favorite,
+    Profile,
+    PushSubscription,
+    ReadingList,
+    ReadingListItem,
+    ReadingProgress,
+)
 from .serializers import (
     FavoriteSerializer,
     ProfileSerializer,
@@ -177,6 +184,76 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
 # ---------------------------------------------------------------------------
 # Convenience: user's library overview (favorites + recent progress)
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Web Push subscriptions (notificacoes de capitulo novo)
+# ---------------------------------------------------------------------------
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def push_subscribe(request):
+    """Registra (ou atualiza) uma subscription do navegador atual.
+
+    Body esperado (formato vindo de pushManager.subscribe().toJSON()):
+      {
+        "endpoint": "...",
+        "keys": {"p256dh": "...", "auth": "..."}
+      }
+
+    Quando o endpoint ja existe (mesmo dispositivo, re-subscribe), faz
+    update mantendo o id antigo.
+    """
+    data = request.data or {}
+    endpoint = data.get("endpoint") or ""
+    keys = data.get("keys") or {}
+    p256dh = keys.get("p256dh") or ""
+    auth = keys.get("auth") or ""
+
+    if not (endpoint and p256dh and auth):
+        return Response(
+            {"error": "endpoint, keys.p256dh e keys.auth sao obrigatorios"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user_agent = (request.META.get("HTTP_USER_AGENT") or "")[:255]
+
+    sub, created = PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={
+            "user": request.user,
+            "p256dh": p256dh,
+            "auth": auth,
+            "user_agent": user_agent,
+        },
+    )
+    return Response(
+        {"id": sub.id, "created": created},
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def push_unsubscribe(request):
+    """Remove a subscription do endpoint informado (mesmo formato do subscribe)."""
+    endpoint = (request.data or {}).get("endpoint") or ""
+    if not endpoint:
+        return Response(
+            {"error": "endpoint e obrigatorio"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    deleted, _ = PushSubscription.objects.filter(
+        user=request.user, endpoint=endpoint
+    ).delete()
+    return Response({"deleted": deleted}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def push_status(request):
+    """Status do push pra esse user. Devolve count de subs ativas."""
+    count = PushSubscription.objects.filter(user=request.user).count()
+    return Response({"subscriptions": count})
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def library_overview(request):

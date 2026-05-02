@@ -221,6 +221,60 @@ self.addEventListener('fetch', (event) => {
 });
 
 // ---------------------------------------------------------------------
+// Web Push: capitulo novo de manga favoritado
+// ---------------------------------------------------------------------
+// Payload esperado (do backend, accounts/push.py):
+//   { title, body, url, tag? }
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data?.json() || {};
+  } catch {
+    data = { title: 'Nexus', body: event.data?.text() || '' };
+  }
+
+  const title = data.title || 'Arasaka Nexus';
+  const opts = {
+    body: data.body || '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    // tag agrupa: notificacao nova substitui a anterior do mesmo manga
+    tag: data.tag || undefined,
+    // renotify=true vibra/badga mesmo quando substituindo
+    renotify: Boolean(data.tag),
+    // data viaja pro notificationclick handler abaixo
+    data: { url: data.url || '/' },
+    // Vibration Android (ms on/off pattern)
+    vibrate: [80, 40, 80],
+  };
+
+  event.waitUntil(self.registration.showNotification(title, opts));
+});
+
+// Click na notificacao: foca aba existente OU abre janela nova
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+  const fullUrl = new URL(target, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((winClients) => {
+        // Reaproveita aba aberta do mesmo origin se existir
+        const existing = winClients.find(
+          (c) => new URL(c.url).origin === self.location.origin,
+        );
+        if (existing) {
+          existing.navigate(fullUrl).catch(() => {});
+          return existing.focus();
+        }
+        return self.clients.openWindow(fullUrl);
+      }),
+  );
+});
+
+// ---------------------------------------------------------------------
 // Mensagens do client (force update, clear cache, etc)
 // ---------------------------------------------------------------------
 self.addEventListener('message', (event) => {
