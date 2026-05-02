@@ -201,6 +201,44 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
 # Convenience: user's library overview (favorites + recent progress)
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
+# Library badge (count de capitulos novos nao-lidos pra app icon badge)
+# ---------------------------------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def library_unread_count(request):
+    """Quantidade de capitulos nao-lidos de mangas favoritados (cap em 99).
+
+    Definicao de "nao-lido":
+      - manga favoritado pelo user com notify_on_new_chapter=True
+      - capitulo release_date nas ultimas 14 dias (nao mostra residuo
+        antigo de quando o user favoritou e nunca leu nada)
+      - sem ReadingProgress do user pra esse capitulo
+
+    Cap em 99: a Badging API trata > 99 com '99+' visualmente nos
+    launchers. Acima disso e desperdicio de query.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from employees.models import Chapter
+
+    cutoff = timezone.now() - timedelta(days=14)
+
+    unread = (
+        Chapter.objects.filter(
+            manga__favorited_by__user=request.user,
+            manga__favorited_by__notify_on_new_chapter=True,
+            release_date__gte=cutoff,
+        )
+        .exclude(reading_progress_entries__user=request.user)
+        .distinct()
+        .count()
+    )
+    return Response({"unread": min(unread, 99)})
+
+
+# ---------------------------------------------------------------------------
 # Web Push subscriptions (notificacoes de capitulo novo)
 # ---------------------------------------------------------------------------
 @api_view(["POST"])

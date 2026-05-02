@@ -248,7 +248,16 @@ self.addEventListener('push', (event) => {
     vibrate: [80, 40, 80],
   };
 
-  event.waitUntil(self.registration.showNotification(title, opts));
+  // Mostra notificacao + bumpa badge do app icon. setAppBadge sem args
+  // = mostra apenas o "ponto" indicando "tem coisa nova" sem numero
+  // (preserva o count atual se ja tinha um). Se quisermos count exato,
+  // o frontend refetcha via library/unread-count quando a aba reabrir.
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, opts),
+      self.navigator?.setAppBadge?.().catch(() => {}),
+    ]),
+  );
 });
 
 // Click na notificacao: foca aba existente OU abre janela nova
@@ -258,19 +267,24 @@ self.addEventListener('notificationclick', (event) => {
   const fullUrl = new URL(target, self.location.origin).href;
 
   event.waitUntil(
-    self.clients
-      .matchAll({ type: 'window', includeUncontrolled: true })
-      .then((winClients) => {
-        // Reaproveita aba aberta do mesmo origin se existir
-        const existing = winClients.find(
-          (c) => new URL(c.url).origin === self.location.origin,
-        );
-        if (existing) {
-          existing.navigate(fullUrl).catch(() => {});
-          return existing.focus();
-        }
-        return self.clients.openWindow(fullUrl);
-      }),
+    Promise.all([
+      // Limpa o badge — user esta engajando com o conteudo, refetch via
+      // library/unread-count vai acontecer no PWAInit quando a aba focar.
+      self.navigator?.clearAppBadge?.().catch(() => {}),
+      self.clients
+        .matchAll({ type: 'window', includeUncontrolled: true })
+        .then((winClients) => {
+          // Reaproveita aba aberta do mesmo origin se existir
+          const existing = winClients.find(
+            (c) => new URL(c.url).origin === self.location.origin,
+          );
+          if (existing) {
+            existing.navigate(fullUrl).catch(() => {});
+            return existing.focus();
+          }
+          return self.clients.openWindow(fullUrl);
+        }),
+    ]),
   );
 });
 

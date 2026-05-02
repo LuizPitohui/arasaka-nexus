@@ -208,11 +208,18 @@ export default function ReaderPage() {
 
   useEffect(() => {
     if (!params?.chapterId || !tokenStore.getAccess()) return;
-    api.post('/accounts/progress/', {
-      chapter: Number(params.chapterId),
-      page_number: 0,
-      completed: false,
-    }).catch(() => {});
+    api
+      .post('/accounts/progress/', {
+        chapter: Number(params.chapterId),
+        page_number: 0,
+        completed: false,
+      })
+      .then(() => {
+        // Capitulo deixou de ser "unread" — refresca o badge do app icon.
+        // Idempotente: re-abrir capitulo ja lido nao muda count.
+        import('@/lib/badge').then(({ refreshBadge }) => refreshBadge());
+      })
+      .catch(() => {});
   }, [params?.chapterId]);
 
   useEffect(() => {

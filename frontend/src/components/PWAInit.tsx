@@ -8,9 +8,13 @@
  * - Captura o evento `beforeinstallprompt` (Chrome/Edge/Samsung) e mostra
  *   um banner discreto no canto inferior. Usuario aceita ou dispensa.
  * - "Dispensa" persiste em localStorage por 7 dias pra nao virar nag.
+ * - Refresca o app icon badge (count de capitulos nao-lidos de favoritos)
+ *   no mount + sempre que a aba volta pro foreground.
  */
 
 import { useEffect, useState } from 'react';
+
+import { refreshBadge } from '@/lib/badge';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -63,6 +67,20 @@ export function PWAInit() {
     };
     window.addEventListener('beforeinstallprompt', onPrompt);
     return () => window.removeEventListener('beforeinstallprompt', onPrompt);
+  }, []);
+
+  // App icon badge — refresca no mount e quando a aba volta pro foreground.
+  // Em browser sem Badging API (Firefox, Safari iOS) e no-op silencioso.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    refreshBadge();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshBadge();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
   if (!installEvt) return null;
