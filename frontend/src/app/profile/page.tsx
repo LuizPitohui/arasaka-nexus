@@ -23,6 +23,8 @@ type Profile = {
   age: number | null;
   is_adult: boolean;
   show_adult: boolean;
+  digest_mode: 'immediate' | 'daily';
+  digest_hour: number;
   created_at: string;
   updated_at: string;
 };
@@ -72,6 +74,8 @@ export default function ProfilePage() {
         preferred_language: profile.preferred_language,
         reader_mode: profile.reader_mode,
         show_adult: profile.show_adult,
+        digest_mode: profile.digest_mode,
+        digest_hour: profile.digest_hour,
       };
       // Only send birthdate if not yet locked (set-once); otherwise the backend
       // would 400. Empty string means user didn't fill it.
@@ -370,6 +374,104 @@ export default function ProfilePage() {
                 </label>
               </div>
             </div>
+          </Section>
+
+          <Section label="05" title="Frequência de notificações">
+            <p
+              className="mono text-[11px] mb-4"
+              style={{ color: 'var(--fg-muted)' }}
+            >
+              Como você prefere receber push de capítulos novos dos seus
+              favoritos.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {(
+                [
+                  {
+                    value: 'immediate',
+                    label: 'Imediata',
+                    hint: '1 push por capítulo, na hora que chega.',
+                  },
+                  {
+                    value: 'daily',
+                    label: 'Resumo diário',
+                    hint: '1 push por dia agrupando tudo.',
+                  },
+                ] as const
+              ).map((opt) => {
+                const active = profile.digest_mode === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => update('digest_mode', opt.value)}
+                    className="text-left p-4 transition-colors corners-sm"
+                    style={{
+                      border: '1px solid',
+                      borderColor: active
+                        ? 'var(--arasaka-red)'
+                        : 'var(--border-mid)',
+                      background: active
+                        ? 'rgba(220,38,38,0.06)'
+                        : 'var(--bg-elevated)',
+                    }}
+                  >
+                    <div
+                      className="text-sm font-bold mb-1"
+                      style={{
+                        color: active ? 'var(--arasaka-red)' : 'var(--fg-primary)',
+                      }}
+                    >
+                      {opt.label}
+                    </div>
+                    <div
+                      className="mono text-[10px] uppercase tracking-widest"
+                      style={{ color: 'var(--fg-muted)' }}
+                    >
+                      {opt.hint}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {profile.digest_mode === 'daily' && (
+              <div className="mt-5">
+                <label
+                  htmlFor="digest_hour"
+                  className="mono text-[10px] uppercase tracking-widest block mb-2"
+                  style={{ color: 'var(--fg-muted)' }}
+                >
+                  // HORARIO_DO_RESUMO (hora local)
+                </label>
+                <select
+                  id="digest_hour"
+                  value={profile.digest_hour}
+                  onChange={(e) =>
+                    update('digest_hour', Number(e.target.value))
+                  }
+                  className="p-2 mono text-sm focus:outline-none"
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-mid)',
+                    color: 'var(--fg-primary)',
+                  }}
+                >
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>
+                      {String(h).padStart(2, '0')}:00
+                    </option>
+                  ))}
+                </select>
+                <p
+                  className="mono text-[10px] mt-2"
+                  style={{ color: 'var(--fg-muted)' }}
+                >
+                  Sem capítulos novos = nenhum push (não enviamos resumo
+                  vazio).
+                </p>
+              </div>
+            )}
           </Section>
 
           <button

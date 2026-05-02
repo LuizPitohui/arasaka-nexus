@@ -10,6 +10,12 @@ READER_MODE_CHOICES = [
 ]
 
 
+DIGEST_MODE_CHOICES = [
+    ("immediate", "Imediata"),
+    ("daily", "Resumo diário"),
+]
+
+
 class Profile(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -32,6 +38,22 @@ class Profile(models.Model):
     # Whether this user has unlocked adult content. Defaults to False even when
     # birthdate >= 18 — user must explicitly opt-in via UI.
     show_adult = models.BooleanField(default=False)
+
+    # Push delivery mode:
+    #   immediate (default): cada capitulo gera 1 push assim que entra
+    #   daily: nada de push em tempo real; 1 push por dia agrupando todos
+    #   os capitulos que chegaram nas ultimas 24h, no horario digest_hour
+    #   (em hora local TIME_ZONE).
+    digest_mode = models.CharField(
+        max_length=10,
+        choices=DIGEST_MODE_CHOICES,
+        default="immediate",
+    )
+    # Hora local (0-23) em que o digest sai. So usado quando digest_mode='daily'.
+    digest_hour = models.PositiveSmallIntegerField(default=20)
+    # Marca o ultimo digest entregue, pra task evitar contar capitulos
+    # duplicados se rodar 2x na mesma hora ou se user mudar fuso.
+    last_digest_sent_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -216,6 +216,13 @@ CELERY_BEAT_SCHEDULE = {
         # entradas pra mangás novos. ~5min de runtime.
         "schedule": crontab(minute=0, hour=3),
     },
+    "daily-digest-dispatch": {
+        "task": "employees.digest_dispatch",
+        # A cada hora no minuto :05 (afastado das outras tasks que rodam
+        # no :00 e :30). A task internamente filtra Profile.digest_hour
+        # pra mandar so pros users daquela hora local.
+        "schedule": crontab(minute=5),
+    },
 }
 
 # Storage limits for the on-demand page mirror

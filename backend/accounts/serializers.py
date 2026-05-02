@@ -28,6 +28,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "age",
             "is_adult",
             "show_adult",
+            "digest_mode",
+            "digest_hour",
             "created_at",
             "updated_at",
         ]
@@ -64,7 +66,14 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             "reader_mode",
             "birthdate",
             "show_adult",
+            "digest_mode",
+            "digest_hour",
         ]
+
+    def validate_digest_hour(self, value):
+        if value < 0 or value > 23:
+            raise serializers.ValidationError("Hora deve ser entre 0 e 23.")
+        return value
 
     def validate_birthdate(self, value):
         instance: Profile | None = self.instance

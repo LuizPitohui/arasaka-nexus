@@ -654,8 +654,12 @@ def notify_chapter_new(chapter_id: int) -> dict:
         return {"status": "skipped", "reason": "chapter-gone"}
 
     manga = chapter.manga
+    # Pega favoriters em modo IMEDIATO. Quem esta em digest='daily' nao
+    # recebe push agora — vai cair no digest_dispatch posterior, que
+    # gathera tudo do dia em 1 push so.
     favoriters = (
         Favorite.objects.filter(manga=manga, notify_on_new_chapter=True)
+        .filter(user__profile__digest_mode="immediate")
         .select_related("user")
         .only("user__id")
     )
@@ -681,4 +685,107 @@ def notify_chapter_new(chapter_id: int) -> dict:
         "chapter_id": chapter_id,
         "manga_id": manga.id,
         "delivered": sent,
+    }
+
+
+@shared_task(name="employees.digest_dispatch")
+def digest_dispatch() -> dict:
+    """Roda a cada hora (Celery Beat). Manda 1 push agrupada pra cada user
+    em modo daily cuja `digest_hour` bate com a hora local atual.
+
+    Anti-duplicacao: usa Profile.last_digest_sent_at como cutoff. Sem
+    isso, se a task rodasse 2x na mesma hora ou se o user mudasse fuso,
+    capitulos seriam contados de novo.
+
+    Cap de 50 capitulos por digest pra evitar query gigante e payload
+    do push estourar limite (~3KB pos-encryption).
+    """
+    from collections import defaultdict
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from accounts.models import Profile
+    from accounts.push import is_configured, send_to_user
+
+    if not is_configured():
+        return {"status": "skipped", "reason": "vapid-not-configured"}
+
+    # Hora LOCAL (TIME_ZONE = America/Manaus por default). digest_hour
+    # do user e interpretado nesse fuso.
+    now_local = timezone.localtime()
+    current_hour = now_local.hour
+
+    profiles = (
+        Profile.objects.filter(digest_mode="daily", digest_hour=current_hour)
+        .select_related("user")
+    )
+
+    sent_users = 0
+    skipped_empty = 0
+
+    for profile in profiles:
+        # Cutoff: ultimo digest entregue, ou 25h atras se primeira vez.
+        # 25 (em vez de 24) garante que um capitulo entrando exatamente
+        # na hora limite do dia anterior nao se perca por race.
+        cutoff = profile.last_digest_sent_at or (
+            timezone.now() - timedelta(hours=25)
+        )
+
+        chapters = list(
+            Chapter.objects.filter(
+                release_date__gte=cutoff,
+                manga__favorited_by__user=profile.user,
+                manga__favorited_by__notify_on_new_chapter=True,
+            )
+            .select_related("manga")
+            .only(
+                "id", "number", "release_date", "manga__id", "manga__title"
+            )
+            .distinct()
+            .order_by("-release_date")[:50]
+        )
+
+        if not chapters:
+            skipped_empty += 1
+            continue
+
+        # Agrupa por manga: { Manga: [Chapter, Chapter, ...] }
+        by_manga: dict = defaultdict(list)
+        for ch in chapters:
+            by_manga[ch.manga].append(ch)
+
+        manga_count = len(by_manga)
+        chapter_count = len(chapters)
+
+        title = (
+            f"{chapter_count} capitulos novos hoje"
+            if chapter_count > 1
+            else "1 capitulo novo hoje"
+        )
+
+        # Body: top 3 mangas com contagem. "+ N outras" se sobrar.
+        items = list(by_manga.items())[:3]
+        body_parts = [f"{manga.title}: {len(chs)}" for manga, chs in items]
+        if manga_count > 3:
+            body_parts.append(f"+{manga_count - 3} outras obras")
+        body = " · ".join(body_parts)
+
+        # Click leva pra biblioteca, aba "continuar" — fluxo natural pra
+        # ler capitulos novos.
+        url = "/library?tab=continue"
+
+        delivered = send_to_user(
+            profile.user, title=title, body=body, url=url, tag="digest-daily"
+        )
+        if delivered > 0:
+            profile.last_digest_sent_at = timezone.now()
+            profile.save(update_fields=["last_digest_sent_at"])
+            sent_users += 1
+
+    return {
+        "status": "ok",
+        "hour_local": current_hour,
+        "users_sent": sent_users,
+        "users_empty": skipped_empty,
     }
