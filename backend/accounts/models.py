@@ -178,6 +178,10 @@ class PushSubscription(models.Model):
     delivery_count = models.PositiveIntegerField(default=0)
     failure_count = models.PositiveIntegerField(default=0)
     last_delivery_at = models.DateTimeField(null=True, blank=True)
+    # Engagement signal: SW notificationclick POSTa em /api/push/clicked/
+    # com o endpoint, e a gente bumpa aqui. click_rate = click/delivery.
+    click_count = models.PositiveIntegerField(default=0)
+    last_click_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-last_seen_at"]

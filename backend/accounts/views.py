@@ -309,6 +309,32 @@ def push_status(request):
 
 
 @api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def push_clicked(request):
+    """SW notificationclick aciona aqui pra contabilizar engagement.
+
+    Anonimo (SW pode nao ter cookie de auth disponivel; fetch credentials
+    dependem da implementacao do SW). Pra evitar inflar metricas com
+    spam, so contamos quando o endpoint informado existe na nossa base —
+    spam de endpoints aleatorios nao bumpa nada.
+
+    Throttle: AnonRateThrottle padrao (200/min) cobre.
+    """
+    from django.db.models import F
+    from django.utils import timezone
+
+    endpoint = (request.data or {}).get("endpoint") or ""
+    if not endpoint or not endpoint.startswith("https://"):
+        return Response({"counted": False}, status=status.HTTP_200_OK)
+
+    updated = PushSubscription.objects.filter(endpoint=endpoint).update(
+        click_count=F("click_count") + 1,
+        last_click_at=timezone.now(),
+    )
+    return Response({"counted": bool(updated)}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def push_test(request):
     """Manda 1 push de teste pro proprio user (todas as subs).

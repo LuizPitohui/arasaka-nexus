@@ -260,6 +260,24 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Telemetria de click: tenta logar engagement (anonimo, fail-silent).
+// Backend filtra endpoints invalidos — spam nao bumpa nada.
+async function logClick() {
+  try {
+    const sub = await self.registration.pushManager.getSubscription();
+    if (!sub) return;
+    await fetch('/api/accounts/push/clicked/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: sub.endpoint }),
+      // keepalive=true permite o request rolar mesmo se SW termina
+      keepalive: true,
+    });
+  } catch {
+    // ignore — metric nao pode bloquear navegacao
+  }
+}
+
 // Click na notificacao: foca aba existente OU abre janela nova
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
@@ -271,6 +289,8 @@ self.addEventListener('notificationclick', (event) => {
       // Limpa o badge — user esta engajando com o conteudo, refetch via
       // library/unread-count vai acontecer no PWAInit quando a aba focar.
       self.navigator?.clearAppBadge?.().catch(() => {}),
+      // Telemetria de click (fire-and-forget)
+      logClick(),
       self.clients
         .matchAll({ type: 'window', includeUncontrolled: true })
         .then((winClients) => {

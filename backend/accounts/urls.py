@@ -8,6 +8,7 @@ from .views import (
     library_overview,
     library_unread_count,
     profile_me,
+    push_clicked,
     push_status,
     push_subscribe,
     push_test,
@@ -27,5 +28,6 @@ urlpatterns = [
     path("push/unsubscribe/", push_unsubscribe, name="push-unsubscribe"),
     path("push/status/", push_status, name="push-status"),
     path("push/test/", push_test, name="push-test"),
+    path("push/clicked/", push_clicked, name="push-clicked"),
     path("", include(router.urls)),
 ]

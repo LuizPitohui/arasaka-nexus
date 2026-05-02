@@ -58,7 +58,10 @@ type PushMetrics = {
     delivered_total: number;
     failed_total: number;
     delivery_rate: number;
+    click_total: number;
+    click_rate: number;
     last_delivery_at: string | null;
+    last_click_at: string | null;
   };
   generated_at: string;
 };
@@ -328,8 +331,12 @@ function ActivityFeed({ activity }: { activity: Activity[] }) {
 /* ─────────────── Push metrics panel ─────────────── */
 function PushPanel({ push }: { push: PushMetrics }) {
   const deliveryPct = (push.delivery.delivery_rate * 100).toFixed(1);
+  const clickPct = (push.delivery.click_rate * 100).toFixed(1);
   const lastDelivery = push.delivery.last_delivery_at
     ? new Date(push.delivery.last_delivery_at).toLocaleString('pt-BR')
+    : '—';
+  const lastClick = push.delivery.last_click_at
+    ? new Date(push.delivery.last_click_at).toLocaleString('pt-BR')
     : '—';
   const deviceEntries = Object.entries(push.subscriptions.by_device).sort(
     (a, b) => b[1] - a[1],
@@ -337,16 +344,16 @@ function PushPanel({ push }: { push: PushMetrics }) {
 
   return (
     <section className="space-y-3">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between flex-wrap gap-2">
         <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--fg-secondary)] font-mono">
           ◢ web push telemetry
         </span>
         <span className="text-[9px] uppercase tracking-[0.25em] text-[var(--fg-muted)] font-mono">
-          last delivery :: {lastDelivery}
+          last delivery :: {lastDelivery} · last click :: {lastClick}
         </span>
       </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Kpi
           label="Subs ativas"
           value={push.subscriptions.total}
@@ -369,6 +376,9 @@ function PushPanel({ push }: { push: PushMetrics }) {
           value={push.users.digest_daily}
           accent="yellow"
         />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Kpi
           label="Entregues"
           value={push.delivery.delivered_total.toLocaleString('pt-BR')}
@@ -386,6 +396,28 @@ function PushPanel({ push }: { push: PushMetrics }) {
           accent={
             push.delivery.delivery_rate < 0.9 &&
             push.delivery.delivered_total + push.delivery.failed_total > 10
+              ? 'magenta'
+              : 'cyan'
+          }
+        />
+        <Kpi
+          label="Cliques"
+          value={push.delivery.click_total.toLocaleString('pt-BR')}
+          hint={`engagement raw`}
+          accent="cyan"
+        />
+        <Kpi
+          label="Click rate"
+          value={`${clickPct}%`}
+          hint={
+            push.delivery.delivered_total === 0
+              ? 'sem dados'
+              : 'cliques / entregues'
+          }
+          // Magenta se delivery > 50 e click < 10% (push virou ruido)
+          accent={
+            push.delivery.delivered_total > 50 &&
+            push.delivery.click_rate < 0.1
               ? 'magenta'
               : 'cyan'
           }

@@ -145,7 +145,9 @@ def push_metrics(request):
         active_7d=Count("id", filter=Q(last_seen_at__gte=last_7d)),
         delivery_total=Sum("delivery_count"),
         failure_total=Sum("failure_count"),
+        click_total=Sum("click_count"),
         last_delivery=Max("last_delivery_at"),
+        last_click=Max("last_click_at"),
     )
 
     users_with_push = (
@@ -178,8 +180,13 @@ def push_metrics(request):
 
     delivery_total = sub_aggs["delivery_total"] or 0
     failure_total = sub_aggs["failure_total"] or 0
+    click_total = sub_aggs["click_total"] or 0
     denom = delivery_total + failure_total
     delivery_rate = (delivery_total / denom) if denom else 0.0
+    # Click rate: cliques / entregues. > 1.0 e possivel teoricamente
+    # (user clica multiplas vezes na mesma push), mas raro — capamos em
+    # 1.0 pra UI nao confundir.
+    click_rate = min(click_total / delivery_total, 1.0) if delivery_total else 0.0
 
     return Response({
         "subscriptions": {
@@ -197,9 +204,16 @@ def push_metrics(request):
             "delivered_total": delivery_total,
             "failed_total": failure_total,
             "delivery_rate": round(delivery_rate, 4),
+            "click_total": click_total,
+            "click_rate": round(click_rate, 4),
             "last_delivery_at": (
                 sub_aggs["last_delivery"].isoformat()
                 if sub_aggs["last_delivery"]
+                else None
+            ),
+            "last_click_at": (
+                sub_aggs["last_click"].isoformat()
+                if sub_aggs["last_click"]
                 else None
             ),
         },
