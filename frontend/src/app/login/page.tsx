@@ -7,6 +7,9 @@ import { toast } from 'sonner';
 
 import { auth, ApiError } from '@/lib/api';
 import { ChevronMark } from '@/components/Brand';
+import { Turnstile } from '@/components/Turnstile';
+
+const TURNSTILE_ENABLED = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
 
 const BOOT_LINES = [
   '> initiating handshake...',
@@ -24,6 +27,10 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [bootShown, setBootShown] = useState(0);
   const [stage, setStage] = useState<'boot' | 'form'>('boot');
+  // Token do Turnstile. Quando o widget desabilitado (dev sem site key),
+  // permanece '' e o form libera mesmo assim. Em prod o submit fica travado
+  // ate o widget chamar onVerify com um token nao-vazio.
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -36,12 +43,16 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (TURNSTILE_ENABLED && !turnstileToken) {
+      setError('AGUARDE A VERIFICAÇÃO DE BOT');
+      return;
+    }
     setError('');
     setSubmitting(true);
     const loadId = toast.loading('// VERIFYING CREDENTIALS...');
 
     try {
-      await auth.login(username, password);
+      await auth.login(username, password, turnstileToken);
       toast.dismiss(loadId);
       toast.success('// ACCESS GRANTED — WELCOME, AGENT.', {
         style: { borderColor: 'var(--neon-green)', color: '#fff' },
@@ -180,9 +191,17 @@ export default function LoginPage() {
             </div>
           )}
 
+          <Turnstile
+            theme="dark"
+            className="flex justify-center"
+            onVerify={(token) => setTurnstileToken(token)}
+            onExpire={() => setTurnstileToken('')}
+            onError={() => setTurnstileToken('')}
+          />
+
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || (TURNSTILE_ENABLED && !turnstileToken)}
             className="w-full py-4 mono text-xs uppercase tracking-[0.3em] transition-all relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: 'var(--arasaka-red)',

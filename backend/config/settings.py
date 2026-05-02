@@ -281,6 +281,16 @@ FLARESOLVERR_URL = os.environ.get("FLARESOLVERR_URL", "")
 #     SOURCES_ENABLED=mangadex,mangaplus,mihon
 SUWAYOMI_URL = os.environ.get("SUWAYOMI_URL", "")
 
+# --- Cloudflare Turnstile (bot challenge em /login + /register) ---
+# Vazio = desabilitado (dev local sem chave). Em prod precisa preencher
+# com a Secret Key do widget criado em https://dash.cloudflare.com/?to=/:account/turnstile.
+# A Site Key correspondente vai pro frontend em NEXT_PUBLIC_TURNSTILE_SITE_KEY.
+# Quando vazio, accounts.turnstile.verify devolve True (bypass) — login/register
+# funcionam normais, util pra dev e pros testes.
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+TURNSTILE_TIMEOUT = int(os.environ.get("TURNSTILE_TIMEOUT", "5"))
+
 # --- Logging ---
 LOGGING = {
     "version": 1,

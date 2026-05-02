@@ -7,6 +7,9 @@ import { toast } from 'sonner';
 
 import { ApiError, auth } from '@/lib/api';
 import { ChevronMark } from '@/components/Brand';
+import { Turnstile } from '@/components/Turnstile';
+
+const TURNSTILE_ENABLED = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -20,6 +23,9 @@ export default function RegisterPage() {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  // Token Turnstile. Vazio em dev (sem site key) ou enquanto o widget
+  // nao foi resolvido. Submit fica travado em prod ate chegar.
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const update =
     (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,6 +60,9 @@ export default function RegisterPage() {
     if (!acceptTerms) {
       localErrors.terms = 'ACEITE_OS_TERMOS';
     }
+    if (TURNSTILE_ENABLED && !turnstileToken) {
+      localErrors.turnstile = 'AGUARDE_VERIFICAÇÃO_DE_BOT';
+    }
     if (Object.keys(localErrors).length) {
       setErrors(localErrors);
       return;
@@ -67,6 +76,7 @@ export default function RegisterPage() {
         email: form.email.trim().toLowerCase(),
         password: form.password,
         birthdate: form.birthdate,
+        turnstileToken,
       });
       toast.dismiss(loadId);
       toast.success('// WELCOME, AGENT — ACCESS GRANTED');
@@ -251,9 +261,25 @@ export default function RegisterPage() {
             </div>
           )}
 
+          <Turnstile
+            theme="dark"
+            className="flex justify-center"
+            onVerify={(token) => setTurnstileToken(token)}
+            onExpire={() => setTurnstileToken('')}
+            onError={() => setTurnstileToken('')}
+          />
+          {errors.turnstile && (
+            <p
+              className="mono text-[10px] uppercase tracking-widest text-center"
+              style={{ color: 'var(--arasaka-red)' }}
+            >
+              ⚠ {errors.turnstile}
+            </p>
+          )}
+
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || (TURNSTILE_ENABLED && !turnstileToken)}
             className="w-full py-4 mono text-xs uppercase tracking-[0.3em] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: 'var(--arasaka-red)',

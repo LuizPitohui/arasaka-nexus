@@ -104,6 +104,17 @@ class RegisterSerializer(serializers.ModelSerializer):
 @throttle_classes([RegisterThrottle])
 def register(request):
     from accounts.auth_jwt import apply_login_cookies
+    from accounts.turnstile import verify as verify_turnstile
+
+    # Bot challenge antes de qualquer trabalho — corta account-farming
+    # automatizado bem antes do banco. Em dev (sem TURNSTILE_SECRET_KEY)
+    # passa direto.
+    token = (request.data or {}).get("turnstile_token") or ""
+    if not verify_turnstile(token, request=request):
+        return Response(
+            {"detail": "Falha na verificacao de bot. Recarregue a pagina e tente de novo."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     serializer = RegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)

@@ -203,10 +203,20 @@ export const api = {
 
 // ---------- auth helpers ----------
 export const auth = {
-  async login(username: string, password: string): Promise<void> {
+  async login(
+    username: string,
+    password: string,
+    turnstileToken: string,
+  ): Promise<void> {
     // Backend seta cookies HttpOnly (nexus_access, nexus_refresh) e
     // devolve só {detail: 'authenticated'}. JS marca presença de sessão.
-    await api.post('/token/', { username, password }, { auth: false });
+    // turnstileToken vai como turnstile_token e e validado antes do
+    // simplejwt sequer tentar credenciais.
+    await api.post(
+      '/token/',
+      { username, password, turnstile_token: turnstileToken },
+      { auth: false },
+    );
     tokenStore.set();
   },
   async register(payload: {
@@ -214,10 +224,16 @@ export const auth = {
     email: string;
     password: string;
     birthdate: string;
+    turnstileToken: string;
   }): Promise<{ user: { id: number; username: string; email: string } }> {
+    const { turnstileToken, ...rest } = payload;
     const data = await api.post<{
       user: { id: number; username: string; email: string };
-    }>('/auth/register/', payload, { auth: false });
+    }>(
+      '/auth/register/',
+      { ...rest, turnstile_token: turnstileToken },
+      { auth: false },
+    );
     tokenStore.set();
     return data;
   },

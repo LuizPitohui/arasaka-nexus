@@ -81,9 +81,24 @@ def clear_login_cookies(response: Response) -> Response:
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):
-    """Login: apos validar credenciais, seta cookies HttpOnly. Body enxuto."""
+    """Login: apos validar credenciais, seta cookies HttpOnly. Body enxuto.
+
+    Antes do simplejwt sequer tentar credenciais, exigimos um Turnstile
+    token valido. Isso corta credential stuffing automatizado direto na
+    porta — economiza ciclos no bcrypt e nao polui o blacklist com
+    tentativas falhas.
+    """
 
     def post(self, request, *args, **kwargs):
+        from .turnstile import verify as verify_turnstile
+
+        token = (request.data or {}).get("turnstile_token") or ""
+        if not verify_turnstile(token, request=request):
+            return Response(
+                {"detail": "Falha na verificacao de bot. Recarregue a pagina."},
+                status=403,
+            )
+
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200 and isinstance(response.data, dict):
             access = response.data.get("access", "")
