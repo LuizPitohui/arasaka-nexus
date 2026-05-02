@@ -67,6 +67,10 @@ class Favorite(models.Model):
         on_delete=models.CASCADE,
         related_name="favorited_by",
     )
+    # Default True: favoritar e implicit opt-in de notificacao. User pode
+    # silenciar mangas barulhentos (webtoons que postam diariamente) sem
+    # precisar desfavoritar.
+    notify_on_new_chapter = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -118,7 +118,7 @@ class FavoriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Favorite
-        fields = ["id", "manga", "manga_id", "created_at"]
+        fields = ["id", "manga", "manga_id", "notify_on_new_chapter", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 

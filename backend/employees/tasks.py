@@ -655,7 +655,7 @@ def notify_chapter_new(chapter_id: int) -> dict:
 
     manga = chapter.manga
     favoriters = (
-        Favorite.objects.filter(manga=manga)
+        Favorite.objects.filter(manga=manga, notify_on_new_chapter=True)
         .select_related("user")
         .only("user__id")
     )

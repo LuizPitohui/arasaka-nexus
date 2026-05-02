@@ -65,12 +65,28 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="check")
     def check(self, request):
-        """``GET /favorites/check/?manga_id=<id>`` → ``{"is_favorite": bool}``"""
+        """``GET /favorites/check/?manga_id=<id>``
+
+        Resposta inclui ``favorite_id`` e ``notify_on_new_chapter`` quando
+        favoritado, pra UI conseguir PATCHar a preferencia sem nova lookup.
+        """
         manga_id = request.query_params.get("manga_id")
         if not manga_id:
             return Response({"error": "manga_id é obrigatório"}, status=400)
-        is_fav = Favorite.objects.filter(user=request.user, manga_id=manga_id).exists()
-        return Response({"is_favorite": is_fav})
+        fav = (
+            Favorite.objects.filter(user=request.user, manga_id=manga_id)
+            .only("id", "notify_on_new_chapter")
+            .first()
+        )
+        if not fav:
+            return Response({"is_favorite": False})
+        return Response(
+            {
+                "is_favorite": True,
+                "favorite_id": fav.id,
+                "notify_on_new_chapter": fav.notify_on_new_chapter,
+            }
+        )
 
     @action(detail=False, methods=["delete"], url_path="by-manga/(?P<manga_id>[^/.]+)")
     def by_manga(self, request, manga_id=None):

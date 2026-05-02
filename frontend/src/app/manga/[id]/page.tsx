@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, BookOpen, Check, Heart, ListPlus, Plus } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bell,
+  BellOff,
+  BookOpen,
+  Check,
+  Heart,
+  ListPlus,
+  Plus,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
@@ -65,6 +74,11 @@ export default function MangaDetails() {
   const [chaptersLoading, setChaptersLoading] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
+  // Quando favoritado: id da row e flag de notificacao. Permite PATCH
+  // sem nova lookup. null quando nao favoritado.
+  const [favoriteId, setFavoriteId] = useState<number | null>(null);
+  const [notifyEnabled, setNotifyEnabled] = useState(true);
+  const [notifyLoading, setNotifyLoading] = useState(false);
   const authed =
     typeof window !== 'undefined' && Boolean(tokenStore.getAccess());
 
@@ -147,10 +161,16 @@ export default function MangaDetails() {
   useEffect(() => {
     if (!params?.id || !authed) return;
     api
-      .get<{ is_favorite: boolean }>(
-        `/accounts/favorites/check/?manga_id=${params.id}`,
-      )
-      .then((res) => setIsFavorite(res.is_favorite))
+      .get<{
+        is_favorite: boolean;
+        favorite_id?: number;
+        notify_on_new_chapter?: boolean;
+      }>(`/accounts/favorites/check/?manga_id=${params.id}`)
+      .then((res) => {
+        setIsFavorite(res.is_favorite);
+        setFavoriteId(res.favorite_id ?? null);
+        setNotifyEnabled(res.notify_on_new_chapter ?? true);
+      })
       .catch(() => {});
   }, [params?.id, authed]);
 
@@ -165,12 +185,19 @@ export default function MangaDetails() {
       if (isFavorite) {
         await api.delete(`/accounts/favorites/by-manga/${params.id}/`);
         setIsFavorite(false);
+        setFavoriteId(null);
+        setNotifyEnabled(true); // reset pro default qd re-favoritar depois
         toast.success('// REMOVED FROM VAULT');
       } else {
-        await api.post('/accounts/favorites/', {
+        const fav = await api.post<{
+          id: number;
+          notify_on_new_chapter: boolean;
+        }>('/accounts/favorites/', {
           manga_id: Number(params.id),
         });
         setIsFavorite(true);
+        setFavoriteId(fav.id);
+        setNotifyEnabled(fav.notify_on_new_chapter);
         toast.success('// VAULTED');
       }
     } catch (err) {
@@ -181,6 +208,29 @@ export default function MangaDetails() {
       }
     } finally {
       setFavLoading(false);
+    }
+  };
+
+  const toggleNotify = async () => {
+    if (!favoriteId) return;
+    const next = !notifyEnabled;
+    setNotifyLoading(true);
+    // Otimista: aplica imediato, reverte se falhar
+    setNotifyEnabled(next);
+    try {
+      await api.patch(`/accounts/favorites/${favoriteId}/`, {
+        notify_on_new_chapter: next,
+      });
+      toast.success(
+        next
+          ? '// NOTIFICACOES ATIVAS'
+          : '// SILENCIADO — sem push de capitulo novo',
+      );
+    } catch {
+      setNotifyEnabled(!next);
+      toast.error('// FALHA AO SALVAR');
+    } finally {
+      setNotifyLoading(false);
     }
   };
 
@@ -216,6 +266,9 @@ export default function MangaDetails() {
         isFavorite={isFavorite}
         favLoading={favLoading}
         toggleFavorite={toggleFavorite}
+        notifyEnabled={notifyEnabled}
+        notifyLoading={notifyLoading}
+        toggleNotify={toggleNotify}
       />
     </>
   );
@@ -255,6 +308,9 @@ type MangaDetailBodyProps = {
   isFavorite: boolean;
   favLoading: boolean;
   toggleFavorite: () => Promise<void>;
+  notifyEnabled: boolean;
+  notifyLoading: boolean;
+  toggleNotify: () => Promise<void>;
 };
 
 function MangaDetailBody({
@@ -270,6 +326,9 @@ function MangaDetailBody({
   isFavorite,
   favLoading,
   toggleFavorite,
+  notifyEnabled,
+  notifyLoading,
+  toggleNotify,
 }: MangaDetailBodyProps) {
   const { isAdult, revealed } = useAdultReveal(manga.id, manga.content_rating);
   if (isAdult && !revealed) return null;
@@ -375,6 +434,40 @@ function MangaDetailBody({
                   {isFavorite ? 'IN_VAULT' : 'VAULT'}
                 </span>
               </button>
+              {isFavorite && (
+                <button
+                  onClick={toggleNotify}
+                  disabled={notifyLoading}
+                  title={
+                    notifyEnabled
+                      ? 'Notificacoes ativas — clique pra silenciar'
+                      : 'Silenciado — clique pra reativar'
+                  }
+                  aria-label={
+                    notifyEnabled
+                      ? 'Silenciar notificacoes deste manga'
+                      : 'Ativar notificacoes deste manga'
+                  }
+                  className="flex items-center gap-2 px-3 py-2 mono text-[11px] uppercase tracking-widest transition-all disabled:opacity-50"
+                  style={{
+                    background: notifyEnabled
+                      ? 'rgba(34,211,238,0.08)'
+                      : 'transparent',
+                    border: notifyEnabled
+                      ? '1px solid var(--neon-cyan)'
+                      : '1px solid var(--border-mid)',
+                    color: notifyEnabled
+                      ? 'var(--neon-cyan)'
+                      : 'var(--fg-muted)',
+                  }}
+                >
+                  {notifyEnabled ? (
+                    <Bell className="w-3.5 h-3.5" />
+                  ) : (
+                    <BellOff className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
               {params?.id && <AddToListMenu mangaId={Number(params.id)} authed={authed} />}
             </div>
 
