@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "fun.arasaka.nexus",
+      "sha256_cert_fingerprints": [
+        "PREENCHA_APOS_BUBBLEWRAP_BUILD"
+      ]
+    }
+  }
+]

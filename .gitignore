@@ -24,6 +24,22 @@ postgres_data/
 .docker/
 
 # ========================
+# TWA (Android wrapper)
+# ========================
+# Bubblewrap gera projeto Android Studio inteiro + keystore + APKs.
+# Nada disso sobe no git — keystore e SECRET (sem ele nao da pra
+# atualizar app), APK vai pra GitHub Releases, projeto e regerado
+# do twa-manifest.json a qualquer hora.
+twa/app/
+twa/build/
+twa/.gradle/
+twa/local.properties
+twa/*.keystore
+twa/*.jks
+twa/*.apk
+twa/*.aab
+
+# ========================
 # BACKEND (Python / Django)
 # ========================
 __pycache__/

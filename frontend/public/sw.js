@@ -162,6 +162,14 @@ self.addEventListener('fetch', (event) => {
     return; // browser default
   }
 
+  // Digital Asset Links: precisa ser sempre fresh — Chrome do TWA
+  // valida online no primeiro launch. Se servir cached/stale, o
+  // wrapper Android pode mostrar URL bar achando que nao confia mais
+  // no dominio.
+  if (url.pathname.startsWith('/.well-known/')) {
+    return; // browser default
+  }
+
   // Next.js static (hashed)
   if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));

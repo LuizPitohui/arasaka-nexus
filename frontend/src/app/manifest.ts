@@ -55,6 +55,17 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: 'any',
       },
     ],
+    // Quando o usuario tem o APK Android instalado, o browser pode
+    // sugerir abrir nele em vez de mostrar prompt PWA. prefer=true
+    // priorizaria isso, mas vamos manter false porque PWA e o caminho
+    // padrao no desktop e em iOS — Android com TWA vira opt-in via /app.
+    related_applications: [
+      {
+        platform: 'webapp',
+        url: 'https://nexus.arasaka.fun/manifest.webmanifest',
+      },
+    ],
+    prefer_related_applications: false,
     // Atalhos de long-press no icone do app (Android/Edge)
     shortcuts: [
       {

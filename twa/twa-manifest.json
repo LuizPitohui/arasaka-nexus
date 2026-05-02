@@ -1,0 +1,57 @@
+{
+  "packageId": "fun.arasaka.nexus",
+  "host": "nexus.arasaka.fun",
+  "name": "Arasaka Nexus",
+  "launcherName": "Nexus",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#dc2626",
+  "themeColorDark": "#dc2626",
+  "navigationColor": "#0a0a0e",
+  "navigationColorDark": "#0a0a0e",
+  "navigationDividerColor": "#0a0a0e",
+  "navigationDividerColorDark": "#0a0a0e",
+  "backgroundColor": "#0a0a0e",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://nexus.arasaka.fun/icon-512.png",
+  "maskableIconUrl": "https://nexus.arasaka.fun/icon-maskable-512.png",
+  "monochromeIconUrl": "https://nexus.arasaka.fun/icon-512.png",
+  "appVersionName": "1.0.0",
+  "appVersion": "1",
+  "shortcuts": [
+    {
+      "name": "Continuar lendo",
+      "shortName": "Continuar",
+      "url": "/library?tab=continue",
+      "chosenIconUrl": "https://nexus.arasaka.fun/icon-192.png"
+    },
+    {
+      "name": "Buscar",
+      "shortName": "Buscar",
+      "url": "/search",
+      "chosenIconUrl": "https://nexus.arasaka.fun/icon-192.png"
+    },
+    {
+      "name": "Aleatório",
+      "shortName": "Aleatorio",
+      "url": "/random",
+      "chosenIconUrl": "https://nexus.arasaka.fun/icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://nexus.arasaka.fun/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": { "enabled": false },
+    "playBilling": { "enabled": false }
+  },
+  "alphaDependencies": { "enabled": false },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://nexus.arasaka.fun/",
+  "minSdkVersion": 23,
+  "splashScreenFadeOutDuration": 300,
+  "additionalTrustedOrigins": []
+}
