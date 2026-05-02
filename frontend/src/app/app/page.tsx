@@ -21,12 +21,12 @@ export const metadata: Metadata = {
  *   4. (Opcional) automatizar: workflow que faz release a cada tag.
  */
 
-// Trocar quando subir release nova. Versao no nome ajuda usuario a saber
-// o que ele tem instalado.
-const APK_URL =
-  'https://github.com/SEU-USUARIO/arasaka-nexus/releases/latest/download/nexus.apk';
+// APK servido direto do nosso nginx (volume bind ./downloads/).
+// Pra subir versao nova: scp twa/app-release-signed.apk arasaka:~/arasaka-nexus/downloads/nexus.apk
+// Cache nginx 5min — usuarios pegam atualizacao quase imediato.
+const APK_URL = 'https://nexus.arasaka.fun/downloads/nexus.apk';
 const APK_VERSION = '1.0.0';
-const APK_SIZE = '~2 MB';
+const APK_SIZE = '~1.2 MB';
 const MIN_ANDROID = '6.0 (API 23)';
 
 export default function AppDownloadPage() {

@@ -33,11 +33,31 @@ postgres_data/
 twa/app/
 twa/build/
 twa/.gradle/
+twa/.jdk/
 twa/local.properties
 twa/*.keystore
 twa/*.jks
 twa/*.apk
 twa/*.aab
+twa/.keystore-password
+twa/output-apk-files.txt
+twa/store_icon.png
+twa/webmanifest.json
+twa/init-direct.mjs
+twa/twa-manifest.prod.json
+twa/manifest-checksum.txt
+twa/*.idsig
+twa/*.png
+twa/*.svg
+twa/gradle/
+twa/gradlew
+twa/gradlew.bat
+twa/build.gradle
+twa/settings.gradle
+twa/gradle.properties
+
+# APK distribution dir (binarios sobem via scp, nao git)
+downloads/
 
 # ========================
 # BACKEND (Python / Django)

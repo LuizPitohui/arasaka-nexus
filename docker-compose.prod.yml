@@ -99,6 +99,7 @@ services:
       - ./deploy/security_headers.conf:/etc/nginx/security_headers.conf:ro
       - media:/srv/media:ro
       - static:/srv/static:ro
+      - ./downloads:/srv/downloads:ro
     depends_on:
       - frontend
       - backend
