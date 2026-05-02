@@ -305,11 +305,14 @@ class SuwayomiSource(BaseSource):
             return []
 
         try:
+            # GraphQL via variables (nao concatenacao). Defesa preventiva
+            # contra GraphQL injection caso o cast pra int seja removido
+            # acidentalmente em refactor futuro.
             r = self.session.post(
                 f"{self.base_url}/api/graphql",
                 json={
-                    "query": "{ chapter(id: " + str(cid)
-                    + ") { id pageCount sourceOrder mangaId } }"
+                    "query": "query($id:Int!){chapter(id:$id){id pageCount sourceOrder mangaId}}",
+                    "variables": {"id": cid},
                 },
                 timeout=self.REQUEST_TIMEOUT,
             )
