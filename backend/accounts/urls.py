@@ -7,6 +7,7 @@ from .views import (
     ReadingProgressViewSet,
     library_overview,
     library_unread_count,
+    profile_avatar,
     profile_me,
     push_clicked,
     push_status,
@@ -22,6 +23,7 @@ router.register(r"progress", ReadingProgressViewSet, basename="reading-progress"
 
 urlpatterns = [
     path("profile/", profile_me, name="profile-me"),
+    path("profile/avatar/", profile_avatar, name="profile-avatar"),
     path("library/", library_overview, name="library-overview"),
     path("library/unread-count/", library_unread_count, name="library-unread-count"),
     path("push/subscribe/", push_subscribe, name="push-subscribe"),

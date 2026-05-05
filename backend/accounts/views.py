@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from django.db.models import Max
 from rest_framework import permissions, status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action, api_view, parser_classes, permission_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -37,12 +38,53 @@ def profile_me(request):
     profile, _ = Profile.objects.get_or_create(user=request.user)
 
     if request.method == "GET":
-        return Response(ProfileSerializer(profile).data)
+        return Response(ProfileSerializer(profile, context={"request": request}).data)
 
     serializer = ProfileUpdateSerializer(profile, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
     serializer.save()
-    return Response(ProfileSerializer(profile).data)
+    return Response(ProfileSerializer(profile, context={"request": request}).data)
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def profile_avatar(request):
+    """Upload (POST multipart com campo `avatar`) ou remoção (DELETE) do
+    avatar do user autenticado. Limite 2 MB; aceita JPEG/PNG/WEBP/GIF.
+    """
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+
+    if request.method == "DELETE":
+        if profile.avatar:
+            profile.avatar.delete(save=False)
+            profile.avatar = None
+            profile.save(update_fields=["avatar", "updated_at"])
+        return Response(
+            ProfileSerializer(profile, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+    if "avatar" not in request.FILES:
+        return Response(
+            {"avatar": ["Arquivo não enviado."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    serializer = ProfileUpdateSerializer(
+        profile,
+        data={"avatar": request.FILES["avatar"]},
+        partial=True,
+    )
+    serializer.is_valid(raise_exception=True)
+    # Substitui o avatar antigo no disco pra não acumular órfãos.
+    if profile.avatar:
+        profile.avatar.delete(save=False)
+    serializer.save()
+    return Response(
+        ProfileSerializer(profile, context={"request": request}).data,
+        status=status.HTTP_200_OK,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -199,6 +199,10 @@ export const api = {
     apiFetch<T>(path, { ...options, method: 'PUT', json: body }),
   delete: <T>(path: string, options?: RequestOptions) =>
     apiFetch<T>(path, { ...options, method: 'DELETE' }),
+  // Multipart upload — não setamos Content-Type pra deixar o browser
+  // gerar a boundary correta. FormData passa direto no body.
+  upload: <T>(path: string, form: FormData, method: 'POST' | 'PATCH' = 'POST') =>
+    apiFetch<T>(path, { method, body: form }),
 };
 
 // ---------- auth helpers ----------

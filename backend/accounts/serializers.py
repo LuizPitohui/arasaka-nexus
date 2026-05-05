@@ -70,6 +70,22 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             "digest_hour",
         ]
 
+    def validate_avatar(self, value):
+        if value in (None, ""):
+            return value
+        max_bytes = 2 * 1024 * 1024
+        if getattr(value, "size", 0) > max_bytes:
+            raise serializers.ValidationError(
+                "Imagem muito grande. Limite: 2 MB."
+            )
+        content_type = getattr(value, "content_type", "") or ""
+        allowed = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+        if content_type and content_type not in allowed:
+            raise serializers.ValidationError(
+                "Formato não suportado. Use JPEG, PNG, WEBP ou GIF."
+            )
+        return value
+
     def validate_digest_hour(self, value):
         if value < 0 or value > 23:
             raise serializers.ValidationError("Hora deve ser entre 0 e 23.")

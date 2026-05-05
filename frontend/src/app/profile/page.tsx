@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Calendar, Lock, Save, Shield, ShieldAlert } from 'lucide-react';
+import { Calendar, Camera, Lock, Save, Shield, ShieldAlert, Trash2 } from 'lucide-react';
 
 import Loader from '@/components/Loader';
 import { PushOptIn } from '@/components/PushOptIn';
@@ -41,6 +41,8 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!tokenStore.getAccess()) {
@@ -62,6 +64,52 @@ export default function ProfilePage() {
 
   const update = <K extends keyof Profile>(key: K, value: Profile[K]) => {
     setProfile((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
+
+  const handleAvatarPick = () => fileInputRef.current?.click();
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Imagem muito grande. Limite: 2 MB.');
+      return;
+    }
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
+      toast.error('Use JPEG, PNG, WEBP ou GIF.');
+      return;
+    }
+    setAvatarBusy(true);
+    try {
+      const form = new FormData();
+      form.append('avatar', file);
+      const updated = await api.upload<Profile>('/accounts/profile/avatar/', form);
+      setProfile(updated);
+      toast.success('Avatar atualizado.');
+    } catch (err) {
+      const msg =
+        err instanceof ApiError && err.data && typeof err.data === 'object'
+          ? Object.values(err.data as Record<string, string[] | string>).flat().join(' ')
+          : 'Falha ao enviar avatar.';
+      toast.error(msg || 'Falha ao enviar avatar.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    if (!profile?.avatar) return;
+    setAvatarBusy(true);
+    try {
+      const updated = await api.delete<Profile>('/accounts/profile/avatar/');
+      setProfile(updated);
+      toast.success('Avatar removido.');
+    } catch {
+      toast.error('Falha ao remover avatar.');
+    } finally {
+      setAvatarBusy(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -147,16 +195,58 @@ export default function ProfilePage() {
             }}
           />
           <div className="flex items-start gap-5">
-            <div
-              className="corners-sm flex items-center justify-center shrink-0"
-              style={{
-                width: 72,
-                height: 72,
-                background: 'var(--bg-base)',
-                border: '1px solid var(--border-mid)',
-              }}
-            >
-              <Shield className="w-7 h-7" style={{ color: 'var(--arasaka-red)' }} />
+            <div className="shrink-0 flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAvatarPick}
+                disabled={avatarBusy}
+                aria-label="Trocar avatar"
+                className="corners-sm relative overflow-hidden group disabled:opacity-60"
+                style={{
+                  width: 72,
+                  height: 72,
+                  background: 'var(--bg-base)',
+                  border: '1px solid var(--border-mid)',
+                  cursor: avatarBusy ? 'wait' : 'pointer',
+                }}
+              >
+                {profile.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={profile.avatar}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Shield className="w-7 h-7" style={{ color: 'var(--arasaka-red)' }} />
+                  </div>
+                )}
+                <span
+                  className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ background: 'rgba(0,0,0,0.55)' }}
+                >
+                  <Camera className="w-5 h-5" style={{ color: '#fff' }} />
+                </span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+              {profile.avatar && (
+                <button
+                  type="button"
+                  onClick={handleAvatarRemove}
+                  disabled={avatarBusy}
+                  className="mono text-[9px] uppercase tracking-widest flex items-center gap-1 disabled:opacity-50"
+                  style={{ color: 'var(--fg-muted)' }}
+                >
+                  <Trash2 className="w-3 h-3" /> remover
+                </button>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <p
