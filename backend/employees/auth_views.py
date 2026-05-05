@@ -158,6 +158,13 @@ def logout(request):
 @permission_classes([IsAuthenticated])
 def me(request):
     user = request.user
+    avatar_url = None
+    profile = getattr(user, "profile", None)
+    if profile and profile.avatar:
+        try:
+            avatar_url = request.build_absolute_uri(profile.avatar.url)
+        except ValueError:
+            avatar_url = None
     return Response(
         {
             "id": user.id,
@@ -165,5 +172,6 @@ def me(request):
             "email": user.email,
             "is_staff": user.is_staff,
             "date_joined": user.date_joined,
+            "avatar": avatar_url,
         }
     )

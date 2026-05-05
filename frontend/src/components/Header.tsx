@@ -20,7 +20,35 @@ import { ApiError, api, auth, tokenStore } from '@/lib/api';
 import Brand from './Brand';
 import { GlobalSearch } from './GlobalSearch';
 
-type Me = { id: number; username: string; email: string; is_staff: boolean };
+type Me = {
+  id: number;
+  username: string;
+  email: string;
+  is_staff: boolean;
+  avatar: string | null;
+};
+
+function AvatarBadge({ src, size }: { src: string | null; size: number }) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        style={{
+          width: size,
+          height: size,
+          objectFit: 'cover',
+          border: '1px solid var(--border-mid)',
+          display: 'block',
+        }}
+      />
+    );
+  }
+  return <User style={{ width: size * 0.5, height: size * 0.5 }} />;
+}
 
 const NAV_ITEMS = [
   { href: '/popular', label: 'Populares', icon: Flame },
@@ -86,7 +114,7 @@ export function Header() {
     return () => {
       cancelled = true;
     };
-  }, [authed]);
+  }, [authed, pathname]);
 
   const onLogout = async () => {
     await auth.logout();
@@ -171,7 +199,7 @@ export function Header() {
                   style={{ color: 'var(--fg-secondary)' }}
                   title="Perfil"
                 >
-                  <User className="w-3.5 h-3.5" />
+                  <AvatarBadge src={me?.avatar ?? null} size={22} />
                   <span>{me?.username ?? 'agent'}</span>
                 </Link>
                 <button
@@ -199,14 +227,23 @@ export function Header() {
             {authed ? (
               <Link
                 href="/profile"
-                className="flex items-center justify-center w-10 h-10"
+                className="flex items-center justify-center w-10 h-10 overflow-hidden"
                 style={{
                   color: 'var(--fg-secondary)',
                   border: '1px solid var(--border-faint)',
                 }}
                 aria-label="Perfil"
               >
-                <User className="w-4 h-4" />
+                {me?.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={me.avatar}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <User className="w-4 h-4" />
+                )}
               </Link>
             ) : (
               <Link
@@ -231,6 +268,7 @@ export function Header() {
         pathname={pathname ?? ''}
         authed={authed}
         username={me?.username ?? null}
+        avatar={me?.avatar ?? null}
         onLogout={onLogout}
       />
     </>
@@ -246,6 +284,7 @@ function MobileDrawer({
   pathname,
   authed,
   username,
+  avatar,
   onLogout,
 }: {
   open: boolean;
@@ -253,6 +292,7 @@ function MobileDrawer({
   pathname: string;
   authed: boolean;
   username: string | null;
+  avatar: string | null;
   onLogout: () => void;
 }) {
   return (
@@ -374,7 +414,7 @@ function MobileDrawer({
                 href="/profile"
                 index={null}
                 active={pathname === '/profile'}
-                icon={<User className="w-4 h-4" />}
+                icon={<AvatarBadge src={avatar} size={20} />}
                 onClick={onClose}
               >
                 {username ?? 'Perfil'}
