@@ -45,6 +45,17 @@ type MangaDetail = {
   content_rating?: string;
   categories: Category[];
   chapter_count: number;
+  work_id: number | null;
+  work_sources: WorkSource[];
+};
+
+type WorkSource = {
+  id: number;
+  source_id: string;
+  title: string;
+  chapter_count: number;
+  latest_at: string | null;
+  is_current: boolean;
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -606,6 +617,8 @@ function MangaDetailBody({
               {manga.description || '// NO_DESCRIPTION_AVAILABLE'}
             </p>
 
+            <SourceSwitcher sources={manga.work_sources} currentId={manga.id} />
+
             <div
               className="flex flex-wrap items-end gap-6 md:gap-8 mb-10 pb-6"
               style={{ borderBottom: '1px solid var(--border-faint)' }}
@@ -1056,6 +1069,128 @@ function ChapterRow({
         >
           READ →
         </span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Source switcher — quando a mesma obra (Work) tem 2+ variantes vindas de
+// fontes diferentes (MangaDex + Mihon + MangaPlus), permite ao usuário
+// trocar de fonte sem precisar pesquisar de novo. Marca a variante mais
+// completa em capítulos com badge MAX.
+// ---------------------------------------------------------------------------
+function SourceSwitcher({
+  sources,
+  currentId,
+}: {
+  sources: WorkSource[];
+  currentId: number;
+}) {
+  if (!sources || sources.length <= 1) return null;
+
+  const maxCount = sources.reduce(
+    (acc, s) => (s.chapter_count > acc ? s.chapter_count : acc),
+    0,
+  );
+
+  return (
+    <div
+      className="mb-8 p-4 corners-sm"
+      style={{
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-faint)',
+      }}
+    >
+      <p
+        className="mono text-[10px] uppercase tracking-[0.3em] mb-3"
+        style={{ color: 'var(--fg-muted)' }}
+      >
+        // {sources.length} FONTES — SELECT_STREAM
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {sources.map((s) => {
+          const active = s.id === currentId;
+          const isMax = s.chapter_count === maxCount && maxCount > 0;
+          const label = (
+            SOURCE_LABEL[s.source_id] ??
+            (s.source_id.toUpperCase() + '_STREAM')
+          );
+          if (active) {
+            return (
+              <span
+                key={s.id}
+                className="mono text-[11px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-2"
+                style={{
+                  border: '1px solid var(--arasaka-red)',
+                  background: 'rgba(220,38,38,0.1)',
+                  color: 'var(--arasaka-red)',
+                  fontWeight: 700,
+                }}
+              >
+                ▸ {label}
+                <span
+                  className="tabular-nums"
+                  style={{ color: 'var(--fg-muted)' }}
+                >
+                  [{String(s.chapter_count).padStart(3, '0')}]
+                </span>
+                {isMax && sources.length > 1 && (
+                  <span
+                    className="text-[9px] px-1 py-0.5"
+                    style={{
+                      background: 'var(--arasaka-red)',
+                      color: '#fff',
+                      letterSpacing: '0.1em',
+                    }}
+                  >
+                    MAX
+                  </span>
+                )}
+              </span>
+            );
+          }
+          return (
+            <Link
+              key={s.id}
+              href={`/manga/${s.id}`}
+              className="mono text-[11px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-2 transition-colors"
+              style={{
+                border: '1px solid var(--border-mid)',
+                background: 'transparent',
+                color: 'var(--fg-secondary)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+                e.currentTarget.style.color = 'var(--arasaka-red)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-mid)';
+                e.currentTarget.style.color = 'var(--fg-secondary)';
+              }}
+            >
+              {label}
+              <span
+                className="tabular-nums"
+                style={{ color: 'var(--fg-muted)' }}
+              >
+                [{String(s.chapter_count).padStart(3, '0')}]
+              </span>
+              {isMax && (
+                <span
+                  className="text-[9px] px-1 py-0.5"
+                  style={{
+                    background: 'var(--arasaka-red)',
+                    color: '#fff',
+                    letterSpacing: '0.1em',
+                  }}
+                >
+                  MAX
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
