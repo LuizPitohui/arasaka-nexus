@@ -47,12 +47,31 @@ type ReadingList = {
 };
 
 type LibraryOverview = {
+  sort?: FavSort;
   favorites: MangaSummary[];
   in_progress: Progress[];
   lists: ReadingList[];
 };
 
 type Tab = 'progress' | 'favorites' | 'lists';
+
+type FavSort = 'updated' | 'added' | 'added_asc' | 'alpha' | 'alpha_desc' | 'chapters';
+
+const FAV_SORT_OPTIONS: { value: FavSort; label: string }[] = [
+  { value: 'updated', label: 'Atualizado' },
+  { value: 'added', label: 'Adicionado ↓' },
+  { value: 'added_asc', label: 'Adicionado ↑' },
+  { value: 'alpha', label: 'A → Z' },
+  { value: 'alpha_desc', label: 'Z → A' },
+  { value: 'chapters', label: 'Mais caps' },
+];
+
+const FAV_SORT_STORAGE_KEY = 'nexus_vault_fav_sort';
+const FAV_SORT_VALUES = FAV_SORT_OPTIONS.map((o) => o.value);
+
+function isFavSort(v: string): v is FavSort {
+  return (FAV_SORT_VALUES as string[]).includes(v);
+}
 
 export default function LibraryPage() {
   const router = useRouter();
@@ -61,10 +80,24 @@ export default function LibraryPage() {
   const [tab, setTab] = useState<Tab>('progress');
   const [newListName, setNewListName] = useState('');
   const [creatingList, setCreatingList] = useState(false);
+  const [favSort, setFavSort] = useState<FavSort>('updated');
 
-  const reload = async () => {
+  // Hydrate o sort favorito do localStorage no mount — evita flicker e
+  // mantém a escolha do usuário entre sessões. localStorage é client-only,
+  // por isso esse useEffect separado e não inicializador do useState.
+  useEffect(() => {
     try {
-      const fresh = await api.get<LibraryOverview>('/accounts/library/');
+      const stored = window.localStorage.getItem(FAV_SORT_STORAGE_KEY);
+      if (stored && isFavSort(stored)) setFavSort(stored);
+    } catch {
+      /* sessão privada, etc. — segue com default */
+    }
+  }, []);
+
+  const reload = async (sortOverride?: FavSort) => {
+    try {
+      const s = sortOverride ?? favSort;
+      const fresh = await api.get<LibraryOverview>(`/accounts/library/?sort=${s}`);
       setData(fresh);
     } catch (err) {
       console.error(err);
@@ -77,7 +110,7 @@ export default function LibraryPage() {
       return;
     }
     api
-      .get<LibraryOverview>('/accounts/library/')
+      .get<LibraryOverview>(`/accounts/library/?sort=${favSort}`)
       .then(setData)
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
@@ -87,7 +120,17 @@ export default function LibraryPage() {
         }
       })
       .finally(() => setLoading(false));
-  }, [router]);
+    // refetch quando o usuário troca o sort
+  }, [router, favSort]);
+
+  const handleSortChange = (next: FavSort) => {
+    setFavSort(next);
+    try {
+      window.localStorage.setItem(FAV_SORT_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const handleUnfavorite = async (mangaId: number) => {
     try {
@@ -197,7 +240,12 @@ export default function LibraryPage() {
 
         {tab === 'progress' && <ProgressTab progress={data.in_progress} />}
         {tab === 'favorites' && (
-          <FavoritesTab favorites={data.favorites} onRemove={handleUnfavorite} />
+          <FavoritesTab
+            favorites={data.favorites}
+            sort={favSort}
+            onSortChange={handleSortChange}
+            onRemove={handleUnfavorite}
+          />
         )}
         {tab === 'lists' && (
           <ListsTab
@@ -329,16 +377,63 @@ function ProgressTab({ progress }: { progress: Progress[] }) {
 
 function FavoritesTab({
   favorites,
+  sort,
+  onSortChange,
+  onRemove,
+}: {
+  favorites: MangaSummary[];
+  sort: FavSort;
+  onSortChange: (next: FavSort) => void;
+  onRemove: (id: number) => void;
+}) {
+  return (
+    <div>
+      {/* Sort pills — sempre visíveis (mesmo no empty state) pra o usuário
+          poder trocar a ordem antes de adicionar favoritos. */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        <span
+          className="mono text-[10px] uppercase tracking-[0.3em] mr-1"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          // ORDER_BY
+        </span>
+        {FAV_SORT_OPTIONS.map((opt) => {
+          const active = sort === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onSortChange(opt.value)}
+              className="mono text-[10px] uppercase tracking-widest px-2.5 py-1 transition-colors"
+              style={{
+                border: '1px solid',
+                borderColor: active ? 'var(--arasaka-red)' : 'var(--border-mid)',
+                background: active ? 'rgba(220,38,38,0.08)' : 'transparent',
+                color: active ? 'var(--arasaka-red)' : 'var(--fg-secondary)',
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {favorites.length === 0 ? (
+        <Empty hint='Sem favoritos ainda. Use o ícone de coração na página de cada mangá.' />
+      ) : (
+        <FavoritesGrid favorites={favorites} onRemove={onRemove} />
+      )}
+    </div>
+  );
+}
+
+function FavoritesGrid({
+  favorites,
   onRemove,
 }: {
   favorites: MangaSummary[];
   onRemove: (id: number) => void;
 }) {
-  if (favorites.length === 0) {
-    return (
-      <Empty hint='Sem favoritos ainda. Use o ícone de coração na página de cada mangá.' />
-    );
-  }
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-5 gap-y-8">
       {favorites.map((manga) => (

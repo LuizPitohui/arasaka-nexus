@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.db.models import Max
+from django.db.models import Count, F, Max
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, parser_classes, permission_classes
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -409,11 +409,38 @@ def push_test(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def library_overview(request):
-    favorites = (
+    # Whitelist de orderings — evita SQL injection via query param e mantém
+    # o contrato estável pro frontend. Default: `updated` (cap mais recente).
+    sort = (request.query_params.get("sort") or "updated").lower()
+
+    fav_qs = (
         Favorite.objects.filter(user=request.user)
         .select_related("manga")
-        .prefetch_related("manga__categories")[:20]
+        .prefetch_related("manga__categories")
     )
+
+    if sort == "added":
+        fav_qs = fav_qs.order_by("-created_at", "-id")
+    elif sort == "added_asc":
+        fav_qs = fav_qs.order_by("created_at", "id")
+    elif sort == "alpha":
+        fav_qs = fav_qs.order_by("manga__title", "-id")
+    elif sort == "alpha_desc":
+        fav_qs = fav_qs.order_by("-manga__title", "-id")
+    elif sort == "chapters":
+        fav_qs = fav_qs.annotate(
+            _cap_count=Count("manga__chapters", distinct=True)
+        ).order_by("-_cap_count", "-created_at")
+    else:
+        # `updated` (default): MAX(chapter.published_at) por mangá, com
+        # nulls_last pra mangás sem capítulos importados não tomarem o topo.
+        sort = "updated"
+        fav_qs = fav_qs.annotate(
+            _latest_at=Max("manga__chapters__published_at")
+        ).order_by(F("_latest_at").desc(nulls_last=True), "-created_at")
+
+    # Limite generoso: usuário com 50 favoritos não some do Vault.
+    favorites = fav_qs[:50]
     favorite_mangas = [fav.manga for fav in favorites]
 
     progress = (
@@ -426,6 +453,7 @@ def library_overview(request):
 
     return Response(
         {
+            "sort": sort,
             "favorites": MangaListSerializer(favorite_mangas, many=True).data,
             "in_progress": ReadingProgressSerializer(progress, many=True).data,
             "lists": ReadingListSerializer(lists, many=True).data,

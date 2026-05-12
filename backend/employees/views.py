@@ -231,7 +231,11 @@ class MangaViewSet(viewsets.ModelViewSet):
             )
             .filter(latest_chapter_at__isnull=False)
             .prefetch_related("categories")
-            .order_by("-latest_chapter_at")
+            # Tiebreaker `-id` evita paginação não-determinística quando dois
+            # mangás compartilham o mesmo `latest_chapter_at` (ou null). Sem
+            # ele, o Postgres pode retornar a mesma linha em páginas
+            # diferentes — bug observado em /latest (páginas 21-30 repetindo).
+            .order_by("-latest_chapter_at", "-id")
         )
         qs = _filter_adult_qs(request, qs)
         page = self.paginate_queryset(qs)
