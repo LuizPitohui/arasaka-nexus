@@ -482,8 +482,26 @@ def library_overview(request):
         ).order_by(F("_latest_at").desc(nulls_last=True), "-created_at")
 
     # Limite generoso: usuário com 50 favoritos não some do Vault.
-    favorites = fav_qs[:50]
-    favorite_mangas = [fav.manga for fav in favorites]
+    favorites = list(fav_qs[:50])
+
+    # Dedupe por Work canonical: se o usuário favoritou 2+ variantes da
+    # mesma obra (MangaDex + Mihon, etc.), mostra UM card só. Mantém a
+    # primeira variante visitada (preserva a ordem do sort acima);
+    # Mangas sem work_id (NULL) ficam independentes pra não colidirem
+    # entre si.
+    seen_works: set[int] = set()
+    deduped_mangas: list = []
+    for fav in favorites:
+        m = fav.manga
+        if m.work_id is None:
+            deduped_mangas.append(m)
+            continue
+        if m.work_id in seen_works:
+            continue
+        seen_works.add(m.work_id)
+        deduped_mangas.append(m)
+
+    favorite_mangas = deduped_mangas
 
     progress = (
         ReadingProgress.objects.filter(user=request.user, completed=False)

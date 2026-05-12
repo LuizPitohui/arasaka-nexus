@@ -15,6 +15,7 @@ from .views import (
     proxy_mihon_cover,
     proxy_mihon_image,
     search_mangas,
+    work_sources,
 )
 
 router = DefaultRouter()
@@ -43,6 +44,7 @@ urlpatterns = [
     ),
     path("cdn/preview/", proxy_cover_preview, name="cdn_cover_preview"),
     path("search/", search_mangas, name="search_mangas"),
+    path("works/<int:work_id>/sources/", work_sources, name="work_sources"),
     path("import/", import_manga, name="import_manga"),
     path("home-data/", home_content, name="home_content"),
     # Auth

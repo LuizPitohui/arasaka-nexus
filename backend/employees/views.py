@@ -725,6 +725,50 @@ LOCAL_LIMIT = 12
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
+def work_sources(request, work_id: int):
+    """Lista as variantes (Manga) de uma Work, ordenadas pela mais
+    completa (mais capítulos). UI usa pra montar o source switcher.
+    """
+    from django.db.models import Count, Max
+
+    from .models import Work
+
+    work = Work.objects.filter(id=work_id).first()
+    if work is None:
+        return Response({"detail": "Work não encontrada."}, status=404)
+
+    variants = (
+        Manga.objects.filter(work=work, is_active=True)
+        .annotate(
+            _chapter_count=Count("chapters", distinct=True),
+            _latest_at=Max("chapters__published_at"),
+        )
+        .order_by("-_chapter_count", "id")
+    )
+    return Response(
+        {
+            "id": work.id,
+            "canonical_title": work.canonical_title,
+            "slug": work.slug,
+            "sources": [
+                {
+                    "id": m.id,
+                    "source_id": m.source_id,
+                    "title": m.title,
+                    "cover": m.cover_url,
+                    "chapter_count": getattr(m, "_chapter_count", 0) or 0,
+                    "latest_at": getattr(m, "_latest_at", None).isoformat()
+                    if getattr(m, "_latest_at", None)
+                    else None,
+                }
+                for m in variants
+            ],
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
 @throttle_classes([SearchThrottle])
 def search_mangas(request):
     query = (request.query_params.get("q") or "").strip()
@@ -734,9 +778,24 @@ def search_mangas(request):
     local_qs = list(
         _filter_adult_qs(
             request, Manga.objects.filter(title__icontains=query, is_active=True)
-        ).order_by("-id")[:LOCAL_LIMIT]
+        ).order_by("-id")[:LOCAL_LIMIT * 3]  # over-fetch porque vamos deduplicar
     )
     seen_dex_ids: set[str] = {m.mangadex_id for m in local_qs if m.mangadex_id}
+
+    # Dedupe local results por Work canonical: o usuário busca "Solo
+    # Leveling" e recebe UM resultado em vez de 3 (MangaDex + Mihon +
+    # MangaPlus). Preserva a primeira variante encontrada (a com id maior,
+    # geralmente a mais recente).
+    seen_works: set[int] = set()
+    deduped_local: list = []
+    for m in local_qs:
+        if m.work_id is None:
+            deduped_local.append(m)
+        elif m.work_id not in seen_works:
+            seen_works.add(m.work_id)
+            deduped_local.append(m)
+        if len(deduped_local) >= LOCAL_LIMIT:
+            break
 
     results = [
         {
@@ -746,8 +805,9 @@ def search_mangas(request):
             "mangadex_id": m.mangadex_id,
             "in_library": True,
             "source": "local",
+            "work_id": m.work_id,
         }
-        for m in local_qs
+        for m in deduped_local
     ]
 
     # Only consult external sources when the local catalogue is weak — keeps
