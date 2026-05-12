@@ -82,6 +82,15 @@ def _persist_mihon_manga(manga_dto, *, fetch_chapters_for: str | None = None) ->
         },
     )
 
+    # Vincula a Work canonical — sem isso, "Solo Leveling (MangaDex)" e
+    # "Solo Leveling (Mihon)" ficam como obras distintas pro usuário.
+    try:
+        from .work_matcher import attach_work
+        attach_work(manga)
+    except Exception:  # pragma: no cover
+        import logging
+        logging.getLogger(__name__).exception("attach_work falhou (mihon)")
+
     chapters_synced = 0
     if fetch_chapters_for:
         from sources import registry as sources_registry

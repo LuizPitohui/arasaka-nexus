@@ -290,6 +290,16 @@ class MangaDexScanner:
             },
         )
 
+        # Vincula a Work canonical — agrupa variantes multi-source pelo
+        # title normalizado. Idempotente; pode falhar silenciosamente se
+        # o título normaliza pra vazio (improvável).
+        try:
+            from .work_matcher import attach_work
+            attach_work(manga_obj)
+        except Exception:  # pragma: no cover — não bloqueia importação
+            import logging
+            logging.getLogger(__name__).exception("attach_work falhou")
+
         tags = attrs.get("tags") or []
         if tags:
             self._apply_tags(manga_obj, tags)
