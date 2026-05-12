@@ -10,6 +10,37 @@ class Category(models.Model):
     class Meta:
         verbose_name_plural = "Categories"
 
+class Work(models.Model):
+    """Obra canônica — agrupa variantes de um mesmo mangá vindas de fontes
+    diferentes (MangaDex, Mihon/Suwayomi, MangaPlus, ...).
+
+    A mesma obra ("Solo Leveling", por exemplo) tipicamente entra no catálogo
+    como 2-3 ``Manga`` distintos, um por fonte, com ``mangadex_id`` diferente.
+    Sem uma camada canônica em cima:
+
+      - O usuário precisa favoritar cada variante separadamente.
+      - O Vault mostra cards duplicados.
+      - Marcar capítulo como lido em uma fonte não reflete na outra.
+      - Notificações de capítulo novo viram 3 push pro mesmo capítulo.
+
+    ``Work`` resolve isso: cada ``Manga`` aponta pra uma ``Work``, e a UI
+    agrupa por ``work`` ao listar Vault / busca. O matching automático é
+    feito por título normalizado (`normalized_title`, único). Mismatches
+    podem ser corrigidos via admin (``Manga.work = X``).
+    """
+
+    canonical_title = models.CharField(max_length=255)
+    normalized_title = models.CharField(max_length=255, db_index=True, unique=True)
+    slug = models.SlugField(max_length=255, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["canonical_title"]
+
+    def __str__(self):
+        return self.canonical_title
+
+
 class Manga(models.Model):
     STATUS_CHOICES = [
         ('ONGOING', 'Lançando'),
@@ -52,6 +83,17 @@ class Manga(models.Model):
         db_index=True,
     )
     categories = models.ManyToManyField(Category, related_name='mangas', blank=True)
+    # FK opcional pra ``Work`` (obra canônica). Quando preenchido, agrupa
+    # esse Manga com outras variantes de outras fontes no Vault e na busca.
+    # Pode ser NULL temporariamente (recém-importado antes do hook attach)
+    # ou se o admin desfez o vínculo. Veja ``employees.work_matcher``.
+    work = models.ForeignKey(
+        Work,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="mangas",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
