@@ -109,8 +109,8 @@ Itens **obrigatórios** pra revisar:
 ## 6. Build + up
 
 ```bash
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d
+docker compose --env-file .env.prod -f docker-compose.prod.yml build
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
 Primeira build leva ~5min (multi-stage do Next.js + collectstatic do Django).
@@ -198,8 +198,8 @@ docker compose -f docker-compose.prod.yml logs -f --tail 100 nginx
 ```bash
 cd ~/projetos/arasaka-nexus
 git pull
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d
+docker compose --env-file .env.prod -f docker-compose.prod.yml build
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
 ### Rodar migrations manualmente (caso necessário)
@@ -256,11 +256,24 @@ docker logs nexus-backend | tail -30
 Causa comum: `DJANGO_SECRET_KEY` vazio, ou `DB_HOST=postgres-global` mas a rede `pg` não está conectando. Confirme `POSTGRES_NETWORK` no `.env.prod`.
 
 **`nexus-frontend` 502 no `/`:**
-O build falhou ou o `NEXT_PUBLIC_API_URL` não foi passado no build. Rebuild com:
+O build falhou ou as `NEXT_PUBLIC_*` não foram passadas no build. Rebuild com:
 ```bash
-docker compose -f docker-compose.prod.yml build --no-cache frontend
-docker compose -f docker-compose.prod.yml up -d
+docker compose --env-file .env.prod -f docker-compose.prod.yml build --no-cache frontend
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
+
+**Login retorna 403 silencioso / Turnstile não aparece:**
+O frontend foi construído sem `--env-file .env.prod`. As build args
+(`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`)
+vêm de interpolação `${VAR:-}` do compose — esse interpolation lê do shell ou
+do `.env` da raiz, **não do `env_file:`** do serviço. Sem `--env-file .env.prod`,
+todas viram string vazia, o widget Turnstile some, o form submete com token
+vazio e o backend rejeita com 403. Sempre rebuild o frontend com:
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml build frontend
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d frontend
+```
+Verificação rápida: `docker exec nexus-frontend grep -rc "$NEXT_PUBLIC_TURNSTILE_SITE_KEY" /app/.next/static/chunks/*.js | grep -v :0` deve retornar pelo menos 1 arquivo.
 
 **Cover não aparece:**
 Beat só executa o job `mirror-covers` a cada 30min. Para forçar:
