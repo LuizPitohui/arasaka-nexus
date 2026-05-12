@@ -199,10 +199,52 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        return (
+        qs = (
             ReadingProgress.objects.filter(user=self.request.user)
             .select_related("chapter__manga")
         )
+        # Filtro por mangá (?manga=<id>) — usado pela página de detalhe pra
+        # carregar de uma vez o estado de leitura de todos os capítulos e
+        # marcar os já lidos no chapter list.
+        manga_id = self.request.query_params.get("manga")
+        if manga_id:
+            qs = qs.filter(chapter__manga_id=manga_id)
+        return qs
+
+    @action(detail=False, methods=["post"], url_path="bulk")
+    def bulk_set(self, request):
+        """Marca/desmarca vários capítulos de uma vez.
+
+        Body: ``{"chapter_ids": [1,2,3], "completed": true}``
+
+        Útil pra ações tipo "marcar todos os anteriores como lidos" sem
+        precisar de N requests separados.
+        """
+        chapter_ids = request.data.get("chapter_ids") or []
+        completed = bool(request.data.get("completed", True))
+        if not isinstance(chapter_ids, list) or not chapter_ids:
+            return Response(
+                {"error": "chapter_ids deve ser uma lista nao vazia"},
+                status=400,
+            )
+        # Limita pra evitar abuso (UI raramente precisa de mais).
+        chapter_ids = [int(c) for c in chapter_ids[:500] if str(c).isdigit()]
+        from employees.models import Chapter
+
+        valid_ids = set(
+            Chapter.objects.filter(id__in=chapter_ids).values_list("id", flat=True)
+        )
+        results = []
+        for cid in chapter_ids:
+            if cid not in valid_ids:
+                continue
+            progress, _ = ReadingProgress.objects.update_or_create(
+                user=request.user,
+                chapter_id=cid,
+                defaults={"completed": completed},
+            )
+            results.append(progress.id)
+        return Response({"updated": len(results)}, status=200)
 
     def create(self, request, *args, **kwargs):
         """Upsert by (user, chapter)."""

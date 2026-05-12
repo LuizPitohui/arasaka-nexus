@@ -9,6 +9,9 @@ import {
   BellOff,
   BookOpen,
   Check,
+  CheckCheck,
+  Eye,
+  EyeOff,
   Heart,
   ListPlus,
   Plus,
@@ -79,6 +82,10 @@ export default function MangaDetails() {
   const [favoriteId, setFavoriteId] = useState<number | null>(null);
   const [notifyEnabled, setNotifyEnabled] = useState(true);
   const [notifyLoading, setNotifyLoading] = useState(false);
+  // Mapa chapter_id -> {completed} pra renderizar badge "lido" no chapter
+  // list. Carregado em /accounts/progress/?manga=<id>. Set vazio quando
+  // usuário não está autenticado.
+  const [readChapters, setReadChapters] = useState<Set<number>>(new Set());
   const authed =
     typeof window !== 'undefined' && Boolean(tokenStore.getAccess());
 
@@ -173,6 +180,109 @@ export default function MangaDetails() {
       })
       .catch(() => {});
   }, [params?.id, authed]);
+
+  // Carrega o estado de leitura de todos os capítulos desse mangá pra
+  // renderizar badges "LIDO" no chapter list. Não-paginated — DRF não
+  // tem paginação no ReadingProgressViewSet padrão? Confere: o ViewSet
+  // padrão usa paginação global. Como o filtro `?manga=` reduz pra <500
+  // entradas no caso típico, o primeiro page já cobre. Carregamos só o
+  // page 1 e aceitamos o cap.
+  useEffect(() => {
+    if (!params?.id || !authed) {
+      setReadChapters(new Set());
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<
+        | { results: { chapter: number; completed: boolean }[] }
+        | { chapter: number; completed: boolean }[]
+      >(`/accounts/progress/?manga=${params.id}&page_size=500`)
+      .then((res) => {
+        if (cancelled) return;
+        const list = Array.isArray(res) ? res : res.results ?? [];
+        const done = new Set<number>();
+        for (const row of list) {
+          if (row.completed) done.add(row.chapter);
+        }
+        setReadChapters(done);
+      })
+      .catch(() => {
+        /* silencioso — sem progresso = nenhum badge */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [params?.id, authed]);
+
+  const toggleChapterRead = useCallback(
+    async (chapterId: number, nextRead: boolean) => {
+      if (!authed) {
+        router.push(`/login?next=/manga/${params?.id}`);
+        return;
+      }
+      // Otimista
+      setReadChapters((prev) => {
+        const copy = new Set(prev);
+        if (nextRead) copy.add(chapterId);
+        else copy.delete(chapterId);
+        return copy;
+      });
+      try {
+        await api.post('/accounts/progress/', {
+          chapter: chapterId,
+          completed: nextRead,
+          page_number: nextRead ? 0 : 0,
+        });
+      } catch {
+        // Rollback
+        setReadChapters((prev) => {
+          const copy = new Set(prev);
+          if (nextRead) copy.delete(chapterId);
+          else copy.add(chapterId);
+          return copy;
+        });
+        toast.error('// FALHA AO SALVAR PROGRESSO');
+      }
+    },
+    [authed, params?.id, router],
+  );
+
+  // Marca todos os capítulos anteriores ao informado como lidos (inclusive
+  // o próprio). Útil pra usuário que migra de outro app e quer alinhar
+  // o estado de leitura. Backend: POST /accounts/progress/bulk/.
+  const markChaptersUpTo = useCallback(
+    async (chapterId: number, sortedChapters: Chapter[]) => {
+      if (!authed) {
+        router.push(`/login?next=/manga/${params?.id}`);
+        return;
+      }
+      const target = sortedChapters.find((c) => c.id === chapterId);
+      if (!target) return;
+      const ids = sortedChapters
+        .filter((c) => Number(c.number) <= Number(target.number))
+        .map((c) => c.id);
+      if (ids.length === 0) return;
+      // Otimista
+      const before = new Set(readChapters);
+      setReadChapters((prev) => {
+        const copy = new Set(prev);
+        for (const id of ids) copy.add(id);
+        return copy;
+      });
+      try {
+        await api.post('/accounts/progress/bulk/', {
+          chapter_ids: ids,
+          completed: true,
+        });
+        toast.success(`// ${ids.length} CAPS MARCADOS COMO LIDOS`);
+      } catch {
+        setReadChapters(before);
+        toast.error('// FALHA AO MARCAR');
+      }
+    },
+    [authed, params?.id, readChapters, router],
+  );
 
   const toggleFavorite = async () => {
     if (!authed) {
@@ -269,6 +379,9 @@ export default function MangaDetails() {
         notifyEnabled={notifyEnabled}
         notifyLoading={notifyLoading}
         toggleNotify={toggleNotify}
+        readChapters={readChapters}
+        onToggleRead={toggleChapterRead}
+        onMarkUpTo={markChaptersUpTo}
       />
     </>
   );
@@ -311,6 +424,9 @@ type MangaDetailBodyProps = {
   notifyEnabled: boolean;
   notifyLoading: boolean;
   toggleNotify: () => Promise<void>;
+  readChapters: Set<number>;
+  onToggleRead: (chapterId: number, nextRead: boolean) => Promise<void>;
+  onMarkUpTo: (chapterId: number, sortedChapters: Chapter[]) => Promise<void>;
 };
 
 function MangaDetailBody({
@@ -329,6 +445,9 @@ function MangaDetailBody({
   notifyEnabled,
   notifyLoading,
   toggleNotify,
+  readChapters,
+  onToggleRead,
+  onMarkUpTo,
 }: MangaDetailBodyProps) {
   const { isAdult, revealed } = useAdultReveal(manga.id, manga.content_rating);
   if (isAdult && !revealed) return null;
@@ -531,7 +650,14 @@ function MangaDetailBody({
               chaptersLoading={chaptersLoading}
             />
 
-            <ChapterList chapters={chapters} loading={chaptersLoading} />
+            <ChapterList
+              chapters={chapters}
+              loading={chaptersLoading}
+              authed={authed}
+              readChapters={readChapters}
+              onToggleRead={onToggleRead}
+              onMarkUpTo={onMarkUpTo}
+            />
           </div>
         </div>
       </div>
@@ -617,9 +743,17 @@ function ChapterToolbar({
 function ChapterList({
   chapters,
   loading,
+  authed,
+  readChapters,
+  onToggleRead,
+  onMarkUpTo,
 }: {
   chapters: Chapter[];
   loading: boolean;
+  authed: boolean;
+  readChapters: Set<number>;
+  onToggleRead: (chapterId: number, nextRead: boolean) => Promise<void>;
+  onMarkUpTo: (chapterId: number, sortedChapters: Chapter[]) => Promise<void>;
 }) {
   const [filter, setFilter] = useState('');
   const [order, setOrder] = useState<'desc' | 'asc'>('desc');
@@ -743,49 +877,185 @@ function ChapterList({
           paddingRight: chapters.length > 40 ? 4 : undefined,
         }}
       >
-        {filtered.map((chapter) => (
-          <Link
-            key={chapter.id}
-            href={`/read/${chapter.id}`}
-            className="flex items-center justify-between p-3.5 transition-all group"
+        {filtered.map((chapter) => {
+          const isRead = readChapters.has(chapter.id);
+          return (
+            <ChapterRow
+              key={chapter.id}
+              chapter={chapter}
+              isRead={isRead}
+              authed={authed}
+              onToggleRead={onToggleRead}
+              onMarkUpTo={() => onMarkUpTo(chapter.id, filtered)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chapter row — Link no título/número (abre o reader) + 2 botões inline:
+//   - Toggle individual de lido/não-lido (Eye/EyeOff).
+//   - Marcar este e todos os anteriores como lidos (CheckCheck).
+// Toda a row é renderizada via <div> em vez de <Link> envolvendo tudo
+// porque os botões precisam de stopPropagation pra não acionar navegação.
+// ---------------------------------------------------------------------------
+function ChapterRow({
+  chapter,
+  isRead,
+  authed,
+  onToggleRead,
+  onMarkUpTo,
+}: {
+  chapter: Chapter;
+  isRead: boolean;
+  authed: boolean;
+  onToggleRead: (chapterId: number, nextRead: boolean) => Promise<void>;
+  onMarkUpTo: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const handleToggle = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onToggleRead(chapter.id, !isRead);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleMarkUpTo = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onMarkUpTo();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="flex items-center justify-between p-3.5 transition-all group relative"
+      style={{
+        background: isRead ? 'rgba(34,197,94,0.04)' : 'var(--bg-terminal)',
+        border: '1px solid',
+        borderColor: isRead ? 'rgba(34,197,94,0.25)' : 'var(--border-faint)',
+        opacity: isRead ? 0.78 : 1,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+        e.currentTarget.style.background = 'rgba(220,38,38,0.04)';
+        e.currentTarget.style.opacity = '1';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = isRead
+          ? 'rgba(34,197,94,0.25)'
+          : 'var(--border-faint)';
+        e.currentTarget.style.background = isRead
+          ? 'rgba(34,197,94,0.04)'
+          : 'var(--bg-terminal)';
+        e.currentTarget.style.opacity = isRead ? '0.78' : '1';
+      }}
+    >
+      <Link
+        href={`/read/${chapter.id}`}
+        className="flex items-center gap-4 min-w-0 flex-1"
+      >
+        <span
+          className="mono text-sm font-bold w-14 shrink-0"
+          style={{ color: isRead ? 'rgba(34,197,94,0.85)' : 'var(--arasaka-red)' }}
+        >
+          #{chapter.number.padStart(3, '0')}
+        </span>
+        <span
+          className="text-sm truncate flex-1"
+          style={{
+            color: isRead ? 'var(--fg-muted)' : 'var(--fg-secondary)',
+            textDecoration: isRead ? 'line-through' : 'none',
+            textDecorationColor: 'rgba(34,197,94,0.4)',
+          }}
+        >
+          {chapter.title || `Chapter ${chapter.number}`}
+        </span>
+        {isRead && (
+          <span
+            className="mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 shrink-0"
             style={{
-              background: 'var(--bg-terminal)',
-              border: '1px solid var(--border-faint)',
+              border: '1px solid rgba(34,197,94,0.5)',
+              color: 'rgba(34,197,94,0.95)',
+              background: 'rgba(34,197,94,0.06)',
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-              e.currentTarget.style.background = 'rgba(220,38,38,0.04)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-faint)';
-              e.currentTarget.style.background = 'var(--bg-terminal)';
-            }}
+            title="Você já leu este capítulo"
           >
-            <div className="flex items-center gap-4 min-w-0 flex-1">
-              <span
-                className="mono text-sm font-bold w-14 shrink-0"
-                style={{ color: 'var(--arasaka-red)' }}
-              >
-                #{chapter.number.padStart(3, '0')}
-              </span>
-              <span
-                className="text-sm truncate flex-1"
-                style={{ color: 'var(--fg-secondary)' }}
-              >
-                {chapter.title || `Chapter ${chapter.number}`}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <LanguageBadge code={chapter.translated_language} />
-              <span
-                className="mono text-[10px] uppercase tracking-widest hidden sm:inline"
-                style={{ color: 'var(--fg-muted)' }}
-              >
-                READ →
-              </span>
-            </div>
-          </Link>
-        ))}
+            LIDO
+          </span>
+        )}
+      </Link>
+      <div className="flex items-center gap-2 shrink-0 ml-3">
+        <LanguageBadge code={chapter.translated_language} />
+        {authed && (
+          <>
+            <button
+              type="button"
+              onClick={handleMarkUpTo}
+              disabled={busy}
+              title="Marcar este e todos os anteriores como lidos"
+              aria-label="Marcar até aqui"
+              className="p-1.5 transition-colors disabled:opacity-40"
+              style={{
+                border: '1px solid var(--border-faint)',
+                color: 'var(--fg-muted)',
+                background: 'transparent',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(34,197,94,0.6)';
+                e.currentTarget.style.color = 'rgba(34,197,94,0.95)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-faint)';
+                e.currentTarget.style.color = 'var(--fg-muted)';
+              }}
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleToggle}
+              disabled={busy}
+              title={isRead ? 'Marcar como não-lido' : 'Marcar como lido'}
+              aria-label={isRead ? 'Marcar como não-lido' : 'Marcar como lido'}
+              className="p-1.5 transition-colors disabled:opacity-40"
+              style={{
+                border: '1px solid',
+                borderColor: isRead
+                  ? 'rgba(34,197,94,0.6)'
+                  : 'var(--border-faint)',
+                color: isRead ? 'rgba(34,197,94,0.95)' : 'var(--fg-muted)',
+                background: isRead ? 'rgba(34,197,94,0.08)' : 'transparent',
+              }}
+            >
+              {isRead ? (
+                <Eye className="w-3.5 h-3.5" />
+              ) : (
+                <EyeOff className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </>
+        )}
+        <span
+          className="mono text-[10px] uppercase tracking-widest hidden sm:inline"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          READ →
+        </span>
       </div>
     </div>
   );
