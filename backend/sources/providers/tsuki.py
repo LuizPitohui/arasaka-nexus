@@ -8,14 +8,24 @@ via DevTools, não documentado mas estável há ~2 anos):
   GET /api/v2/chapter/versions/<manga_id>?page=1   capítulos paginados
   GET /api/v2/chapter/versions/<version_id>/pages  páginas de um capítulo
 
-Nota operacional: Tsuki tem Cloudflare leve, nem sempre exige challenge.
-Quando exige, esse provider vai degradar — o health check captura isso e
-o painel admin sinaliza como DOWN. Refazer com Playwright é trabalho futuro.
+Anti-bot:
+- Tsuki adicionou um JS challenge: requests sem UA realista recebem
+  pagina HTML "Error. Page cannot be displayed". UA de browser recebe
+  uma pagina <script>window.location.replace(...&js=<JWT>)</script> que
+  precisa ser seguida pra obter o cookie de sessao.
+- A gente faz o "cookie dance" manualmente: se a primeira resposta nao
+  for JSON, extrai o ``js=<JWT>`` do redirect e refaz o request — o
+  servidor seta cookie de sessao e os requests subsequentes funcionam
+  pelo TTL do JWT (~2h pelo iat/exp observados).
+- Quando o challenge muda de forma drastica, o provider degrada e o
+  health check sinaliza no painel. Refazer com Playwright e trabalho
+  futuro se o JS ficar mais complexo.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Optional
 
@@ -24,6 +34,18 @@ from ..base.http import BaseHTTPClient, SourceHTTPError
 from ..base.source import BaseSource
 
 logger = logging.getLogger(__name__)
+
+
+# Tsuki blacklist UAs identificaveis (qualquer coisa com "bot" ou nosso
+# default "ArasakaNexus/..."). UA de Chrome real recebe o JS challenge,
+# que a gente resolve manualmente.
+TSUKI_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+
+# Regex pra extrair o ``js=<JWT>`` do redirect HTML do challenge.
+_TSUKI_CHALLENGE_JS = re.compile(r"window\.location\.replace\('([^']+)'\)")
 
 
 class TsukiSource(BaseSource):
@@ -40,37 +62,87 @@ class TsukiSource(BaseSource):
         self.client = BaseHTTPClient(
             source_id=self.id,
             base_url=self.API_BASE,
+            user_agent=TSUKI_UA,
             default_headers={
-                "Accept": "application/json",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
                 "Origin": self.base_url,
                 "Referer": self.base_url + "/",
             },
         )
+        # Cookie/sessao do JS challenge — populado on demand
+        self._challenge_passed = False
+
+    def _solve_challenge(self, html: str) -> bool:
+        """Detecta + resolve o JS challenge do Tsuki.
+
+        Espera HTML do shape ``<script>window.location.replace('...&js=<JWT>')</script>``.
+        Faz o GET na URL com ``js`` querystring — o servidor seta cookie de
+        sessao na requests.Session. Subsequente requests viajam autenticados
+        pelo TTL do JWT (~2h).
+        """
+        match = _TSUKI_CHALLENGE_JS.search(html)
+        if not match:
+            return False
+        challenge_url = match.group(1)
+        try:
+            # Bypassa o ``BaseHTTPClient.get`` pra nao re-disparar o handler.
+            self.client.session.get(challenge_url, timeout=15)
+            self._challenge_passed = True
+            return True
+        except Exception as exc:
+            logger.warning("tsuki challenge solve failed: %s", exc)
+            return False
+
+    def _get_json(self, path: str, *, endpoint: str, params: dict | None = None,
+                  record_telemetry: bool = True) -> dict | list:
+        """GET wrapper que resolve o JS challenge se a primeira resposta nao
+        for JSON. Retry uma vez. Devolve {} (ou []) em falha permanente.
+
+        Necessario porque o Tsuki responde HTML 200 OK (challenge) em vez
+        de JSON quando a sessao nao tem cookie valido — ``response.json()``
+        lancaria ValueError sem essa camada.
+        """
+        for attempt in range(2):
+            try:
+                resp = self.client.get(
+                    path, endpoint=endpoint, params=params,
+                    record_telemetry=record_telemetry,
+                )
+            except SourceHTTPError:
+                return {}
+            ct = (resp.headers.get("content-type") or "").lower()
+            if "application/json" in ct or "json" in ct:
+                try:
+                    return resp.json()
+                except ValueError:
+                    return {}
+            # Resposta nao-JSON: tenta resolver challenge e re-pedir
+            if attempt == 0 and self._solve_challenge(resp.text):
+                continue
+            return {}
+        return {}
 
     # ---------- search & detail ----------
 
     def search(self, query: str, page: int = 1) -> list[MangaDTO]:
-        try:
-            resp = self.client.get(
-                "/mangas/search",
-                endpoint="search",
-                params={"title": query, "page": page},
-            )
-            payload = resp.json()
-        except (SourceHTTPError, ValueError):
-            return []
-        items = payload.get("data") or payload.get("mangas") or payload if isinstance(payload, list) else payload.get("data", [])
-        if isinstance(items, dict):
-            items = items.get("data", [])
+        payload = self._get_json(
+            "/mangas/search", endpoint="search",
+            params={"title": query, "page": page},
+        )
+        if isinstance(payload, list):
+            items = payload
+        else:
+            items = payload.get("data") or payload.get("mangas") or []
+            if isinstance(items, dict):
+                items = items.get("data", [])
         return [self._to_manga_dto(m) for m in items if isinstance(m, dict)]
 
     def fetch_manga(self, external_id: str) -> MangaDTO:
-        try:
-            resp = self.client.get(f"/mangas/{external_id}", endpoint="manga")
-            data = resp.json()
-        except (SourceHTTPError, ValueError):
+        data = self._get_json(f"/mangas/{external_id}", endpoint="manga")
+        if not data:
             return MangaDTO(external_id=external_id, title="(não encontrado)")
-        return self._to_manga_dto(data)
+        return self._to_manga_dto(data if isinstance(data, dict) else {})
 
     # ---------- chapters ----------
 
@@ -78,16 +150,11 @@ class TsukiSource(BaseSource):
         out: list[ChapterDTO] = []
         page = 1
         while page <= 50:
-            try:
-                resp = self.client.get(
-                    f"/chapter/versions/{external_id}",
-                    endpoint="chapters",
-                    params={"page": page},
-                )
-                payload = resp.json()
-            except (SourceHTTPError, ValueError):
-                break
-            items = payload.get("data") or []
+            payload = self._get_json(
+                f"/chapter/versions/{external_id}",
+                endpoint="chapters", params={"page": page},
+            )
+            items = payload.get("data") or [] if isinstance(payload, dict) else []
             if not items:
                 break
             for ch in items:
@@ -102,15 +169,10 @@ class TsukiSource(BaseSource):
     # ---------- pages ----------
 
     def fetch_pages(self, chapter_external_id: str) -> list[PageDTO]:
-        try:
-            resp = self.client.get(
-                f"/chapter/versions/{chapter_external_id}/pages",
-                endpoint="pages",
-            )
-            payload = resp.json()
-        except (SourceHTTPError, ValueError):
-            return []
-        items = payload if isinstance(payload, list) else payload.get("pages") or payload.get("data") or []
+        payload = self._get_json(
+            f"/chapter/versions/{chapter_external_id}/pages", endpoint="pages",
+        )
+        items = payload if isinstance(payload, list) else (payload.get("pages") or payload.get("data") or [])
         out: list[PageDTO] = []
         for i, p in enumerate(items):
             if isinstance(p, str):
@@ -127,34 +189,27 @@ class TsukiSource(BaseSource):
 
     def healthcheck(self) -> HealthResult:
         t0 = time.monotonic()
-        try:
-            resp = self.client.get(
-                "/mangas/search",
-                endpoint="healthcheck",
-                params={"title": "naruto", "page": 1},
-                record_telemetry=False,
-            )
-        except SourceHTTPError as exc:
-            return HealthResult(
-                success=False,
-                latency_ms=int((time.monotonic() - t0) * 1000),
-                status_code=exc.status_code,
-                error_class=exc.error_class,
-                error_message=str(exc)[:500],
-                extracted_count=0,
-            )
+        payload = self._get_json(
+            "/mangas/search", endpoint="healthcheck",
+            params={"title": "naruto", "page": 1},
+            record_telemetry=False,
+        )
         latency = int((time.monotonic() - t0) * 1000)
-        try:
-            payload = resp.json()
-            items = payload.get("data") if isinstance(payload, dict) else payload
-            count = len(items) if isinstance(items, list) else 0
-        except ValueError:
-            count = 0
+        items = payload.get("data") if isinstance(payload, dict) else payload
+        count = len(items) if isinstance(items, list) else 0
+        # _get_json devolve {} em falha (challenge nao-resolvido, 5xx, etc).
+        # Success = conseguimos extrair pelo menos uma entrada — confirma
+        # que o JS challenge foi resolvido E o catalogo respondeu.
         return HealthResult(
-            success=resp.status_code < 400,
+            success=count > 0,
             latency_ms=latency,
-            status_code=resp.status_code,
+            status_code=200 if count > 0 else 0,
             extracted_count=count,
+            error_class="parser_drift" if count == 0 else None,
+            error_message=(
+                "Sem itens extraidos — possivel anti-bot ou shape mudou"
+                if count == 0 else None
+            ),
         )
 
     # ---------- DTO mapping ----------
