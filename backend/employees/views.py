@@ -12,7 +12,8 @@ import logging
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Count, Max, Q
+from django.db.models import Count, F, Max, OuterRef, Q, Subquery
+from django.db.models.functions import Greatest
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
@@ -41,6 +42,40 @@ def _filter_adult_qs(request, qs):
     if _user_can_see_adult(request):
         return qs
     return qs.filter(content_rating__in=SAFE_RATINGS)
+
+
+def _dedupe_by_work(qs):
+    """Filtra ``qs`` pra incluir apenas a melhor variante de cada Work.
+
+    "Melhor" = maior count de capitulos importados, tiebreaker pela
+    atividade mais recente (Greatest(published_at, release_date)), com
+    -id como ultimo desempate determinístico.
+
+    Mangas sem ``work_id`` (recem-importados antes do matcher canonico
+    rodar, ou unicos) passam direto. Pra mangas com ``work_id``, mantem
+    so o id que satisfaz a subquery do best-variant.
+
+    Uso: filtrar listagens (popular, latest, search, browse) pra mostrar
+    UMA card por Work em vez de 3 variantes redundantes vindas de fontes
+    diferentes. Aplicar SEMPRE antes de paginate_queryset — dedup pos-
+    paginacao quebra contagem e gera paginas desbalanceadas.
+    """
+    # Import dentro da funcao porque _dedupe_by_work é definido antes do
+    # `from .models import Manga` no topo do arquivo (ordem historica).
+    from .models import Manga
+
+    best_per_work = (
+        Manga.objects.filter(work_id=OuterRef("work_id"), is_active=True)
+        .annotate(
+            _cap_count=Count("chapters"),
+            _latest_at=Max(
+                Greatest("chapters__published_at", "chapters__release_date")
+            ),
+        )
+        .order_by("-_cap_count", F("_latest_at").desc(nulls_last=True), "-id")
+        .values("id")[:1]
+    )
+    return qs.filter(Q(work__isnull=True) | Q(id=Subquery(best_per_work)))
 
 # Cache key for individual manga detail responses; short TTL since chapter
 # count changes when feeds sync.
@@ -182,7 +217,6 @@ class MangaViewSet(viewsets.ModelViewSet):
         if ordering in {"popular"}:
             qs = qs.annotate(favorites_count=Count("favorited_by", distinct=True))
         if ordering in {"latest_chapter"}:
-            from django.db.models.functions import Greatest
             # Greatest(published_at, release_date) por capitulo: pega a data
             # mais recente entre publicacao real upstream e insercao no nosso
             # DB. Garante que tanto novos chapters quanto recem-importados
@@ -196,7 +230,11 @@ class MangaViewSet(viewsets.ModelViewSet):
             )
 
         order_expr = VALID_ORDERINGS.get(ordering, "-id")
-        return qs.order_by(order_expr)
+        qs = qs.order_by(order_expr)
+        # Dedup por Work: uma card por obra canonica, mesmo que existam
+        # variantes de fontes diferentes. UI fica sem duplicatas em browse,
+        # genres, filtros etc.
+        return _dedupe_by_work(qs)
 
     @action(detail=False, methods=["get"], permission_classes=[AllowAny])
     def popular(self, request):
@@ -207,6 +245,7 @@ class MangaViewSet(viewsets.ModelViewSet):
             .order_by("-favorites_count", "-id")
         )
         qs = _filter_adult_qs(request, qs)
+        qs = _dedupe_by_work(qs)
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = MangaListSerializer(page, many=True)
@@ -215,8 +254,6 @@ class MangaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], permission_classes=[AllowAny])
     def latest(self, request):
-        from django.db.models.functions import Greatest
-
         # Greatest(published_at, release_date): pega a "atividade mais recente"
         # de cada capitulo (publicacao real upstream OU insercao no nosso DB,
         # o que for maior). Mangas com cap novo sobem porque published_at sobe;
@@ -238,6 +275,7 @@ class MangaViewSet(viewsets.ModelViewSet):
             .order_by("-latest_chapter_at", "-id")
         )
         qs = _filter_adult_qs(request, qs)
+        qs = _dedupe_by_work(qs)
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = MangaListSerializer(page, many=True)
@@ -775,27 +813,23 @@ def search_mangas(request):
     if not query:
         return Response([])
 
-    local_qs = list(
-        _filter_adult_qs(
-            request, Manga.objects.filter(title__icontains=query, is_active=True)
-        ).order_by("-id")[:LOCAL_LIMIT * 3]  # over-fetch porque vamos deduplicar
+    # Dedup por Work canonical: o usuário busca "Solo Leveling" e recebe
+    # UMA variante em vez de 3 (MangaDex + Mihon + MangaPlus). Pega a
+    # MELHOR variante por Work (mais capitulos, atividade mais recente).
+    base_qs = _filter_adult_qs(
+        request, Manga.objects.filter(title__icontains=query, is_active=True)
     )
-    seen_dex_ids: set[str] = {m.mangadex_id for m in local_qs if m.mangadex_id}
+    deduped_qs = _dedupe_by_work(base_qs).order_by("-id")[:LOCAL_LIMIT]
+    local_qs = list(deduped_qs)
 
-    # Dedupe local results por Work canonical: o usuário busca "Solo
-    # Leveling" e recebe UM resultado em vez de 3 (MangaDex + Mihon +
-    # MangaPlus). Preserva a primeira variante encontrada (a com id maior,
-    # geralmente a mais recente).
-    seen_works: set[int] = set()
-    deduped_local: list = []
-    for m in local_qs:
-        if m.work_id is None:
-            deduped_local.append(m)
-        elif m.work_id not in seen_works:
-            seen_works.add(m.work_id)
-            deduped_local.append(m)
-        if len(deduped_local) >= LOCAL_LIMIT:
-            break
+    # Pra excluir do upstream lookup, precisamos dos mangadex_ids de TODAS
+    # as variantes ja indexadas localmente — nao so das que sobreviveram ao
+    # dedup. Caso contrario o multi_source_search devolveria duplicatas.
+    all_dex_ids = set(
+        base_qs.exclude(mangadex_id__isnull=True)
+        .exclude(mangadex_id="")
+        .values_list("mangadex_id", flat=True)
+    )
 
     results = [
         {
@@ -807,7 +841,7 @@ def search_mangas(request):
             "source": "local",
             "work_id": m.work_id,
         }
-        for m in deduped_local
+        for m in local_qs
     ]
 
     # Only consult external sources when the local catalogue is weak — keeps
@@ -815,7 +849,7 @@ def search_mangas(request):
     if len(query) > 2 and len(local_qs) < LOCAL_FIRST_THRESHOLD:
         from sources.search import multi_source_search
 
-        results.extend(multi_source_search(query, exclude_dex_ids=seen_dex_ids))
+        results.extend(multi_source_search(query, exclude_dex_ids=all_dex_ids))
 
     return Response(results)
 
