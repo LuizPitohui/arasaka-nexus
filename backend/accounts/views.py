@@ -457,13 +457,88 @@ def push_test(request):
 # ---------------------------------------------------------------------------
 # Ranking competitivo
 # ---------------------------------------------------------------------------
+def _compute_progress_to_next(stats, season) -> dict | None:
+    """Calcula quanto falta pro próximo tier baseado no score do user que
+    está sentado na borda do percentil necessário.
+
+    Como os tiers são percentile-based (não threshold fixo), "pontos pra
+    promover" depende da distribuição atual da season. Buscamos o user
+    cuja posição corresponde ao limite superior do próximo tier — superá-lo
+    em score é suficiente pra subir no próximo recompute.
+
+    Devolve None se o user já está no tier máximo.
+    """
+    import math
+
+    from .ranking import RANKS as _RANKS
+
+    next_tier = next(
+        (r for r in sorted(_RANKS, key=lambda x: x.tier) if r.tier > stats.rank_tier),
+        None,
+    )
+    if next_tier is None:
+        return None
+
+    qs = (
+        UserSeasonStats.objects.filter(season=season, score__gt=0)
+        .order_by("-score", "id")
+        .values_list("score", flat=True)
+    )
+    total = qs.count()
+    if total == 0:
+        return {
+            "next_rank": _rank_payload(next_tier.tier),
+            "threshold_score": 0,
+            "points_to_next": 0,
+            "percent": 0,
+        }
+
+    # Maior posição (1-based) que ainda pertence ao next_tier.
+    boundary_pos = max(1, math.ceil(total * next_tier.max_percentile / 100.0))
+    boundary_score_slice = list(qs[boundary_pos - 1 : boundary_pos])
+    threshold = boundary_score_slice[0] if boundary_score_slice else 0
+    points_to_next = max(0, threshold - stats.score + 1)
+    if threshold > 0:
+        percent = min(100, int(round((stats.score / threshold) * 100)))
+    else:
+        percent = 100 if stats.score > 0 else 0
+
+    return {
+        "next_rank": _rank_payload(next_tier.tier),
+        "threshold_score": threshold,
+        "points_to_next": points_to_next,
+        "percent": percent,
+    }
+
+
+def _compute_points_breakdown(user_id, season_id) -> dict:
+    """Soma pontos por tipo (chapter / reading_time / work_complete)."""
+    from django.db.models import Sum
+
+    from .models import ScoreEvent
+
+    rows = (
+        ScoreEvent.objects.filter(user_id=user_id, season_id=season_id)
+        .values("kind")
+        .annotate(total=Sum("points"))
+    )
+    out = {kind: 0 for kind, _ in ScoreEvent.KIND_CHOICES}
+    for row in rows:
+        out[row["kind"]] = int(row["total"] or 0)
+    return out
+
+
+def _total_agents(season) -> int:
+    return UserSeasonStats.objects.filter(season=season, score__gt=0).count()
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def rank_me(request):
-    """Devolve o rank do user autenticado na season ativa.
+    """Devolve rank + progresso + breakdown + total de agentes da season.
 
-    Se o user nunca pontuou, retorna stats zerados (tier 0, score 0) com a
-    season ativa preenchida — UI desenha emblema base e mensagem.
+    Resposta enriquecida pra UI desenhar barra de progresso ao próximo tier
+    e cards de breakdown por origem dos pontos.
     """
     season = Season.current()
     if season is None:
@@ -472,9 +547,11 @@ def rank_me(request):
     stats, _ = UserSeasonStats.objects.select_related("user", "user__profile").get_or_create(
         user=request.user, season=season
     )
-    return Response(
-        UserRankSerializer(stats, context={"request": request}).data
-    )
+    payload = UserRankSerializer(stats, context={"request": request}).data
+    payload["progress"] = _compute_progress_to_next(stats, season)
+    payload["breakdown"] = _compute_points_breakdown(request.user.id, season.id)
+    payload["total_agents"] = _total_agents(season)
+    return Response(payload)
 
 
 @api_view(["GET"])
@@ -514,11 +591,11 @@ def leaderboard(request):
         .select_related("user", "user__profile")
         .first()
     )
-    me = (
-        UserRankSerializer(me_stats, context={"request": request}).data
-        if me_stats
-        else None
-    )
+    me = None
+    if me_stats:
+        me = UserRankSerializer(me_stats, context={"request": request}).data
+        me["progress"] = _compute_progress_to_next(me_stats, season)
+        me["breakdown"] = _compute_points_breakdown(request.user.id, season.id)
 
     return Response(
         {
@@ -526,6 +603,7 @@ def leaderboard(request):
             "entries": entries,
             "me": me,
             "tiers": [_rank_payload(r.tier) for r in RANKS],
+            "total_agents": _total_agents(season),
         }
     )
 

@@ -23,6 +23,20 @@ export type SeasonPayload = {
   is_active: boolean;
 };
 
+export type ProgressPayload = {
+  next_rank: RankPayload;
+  threshold_score: number;
+  points_to_next: number;
+  /** Fração 0-100 do score atual sobre o threshold do próximo tier. */
+  percent: number;
+};
+
+export type BreakdownPayload = {
+  chapter: number;
+  reading_time: number;
+  work_complete: number;
+};
+
 export type RankEntry = {
   season: SeasonPayload;
   username: string;
@@ -32,6 +46,12 @@ export type RankEntry = {
   rank: RankPayload;
   peak_rank: RankPayload;
   computed_at: string | null;
+  /** Presente em rank_me e em leaderboard.me. Null quando user no tier máximo. */
+  progress?: ProgressPayload | null;
+  /** Soma de pontos por origem; presente nos mesmos endpoints. */
+  breakdown?: BreakdownPayload;
+  /** Total de agentes pontuando na season; presente em rank_me. */
+  total_agents?: number;
 };
 
 export type LeaderboardResponse = {
@@ -39,6 +59,7 @@ export type LeaderboardResponse = {
   entries: RankEntry[];
   me: RankEntry | null;
   tiers: RankPayload[];
+  total_agents: number;
 };
 
 export type SeasonHistoryEntry = SeasonPayload & {
@@ -56,3 +77,18 @@ export const fetchLeaderboard = (params?: { limit?: number; season?: string }) =
   return api.get<LeaderboardResponse>(`/accounts/leaderboard/${qs ? `?${qs}` : ''}`);
 };
 export const fetchSeasons = () => api.get<SeasonHistoryEntry[]>('/accounts/seasons/');
+
+/** Formata número grande com separador local (1.234). */
+export const fmt = (n: number) => n.toLocaleString('pt-BR');
+
+/** Converte ISO date string em "Xd Yh Zm" até a data, ou null se já passou. */
+export function timeUntil(iso: string): { days: number; hours: number; minutes: number } | null {
+  const target = new Date(iso).getTime();
+  const now = Date.now();
+  const diff = target - now;
+  if (diff <= 0) return null;
+  const days = Math.floor(diff / 86_400_000);
+  const hours = Math.floor((diff % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((diff % 3_600_000) / 60_000);
+  return { days, hours, minutes };
+}
