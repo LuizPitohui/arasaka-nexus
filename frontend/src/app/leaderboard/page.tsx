@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Clock, Crown, Flame, Hourglass, Layers, Trophy } from 'lucide-react';
 
 import Loader from '@/components/Loader';
+import RankingRules from '@/components/RankingRules';
 import { ApiError, tokenStore } from '@/lib/api';
 import {
   fetchLeaderboard,
@@ -135,6 +136,14 @@ export default function LeaderboardPage() {
             </div>
           )}
         </section>
+
+        <section id="protocolo" className="mt-12 scroll-mt-24">
+          <SectionLabel
+            n={podium.length > 0 ? '05' : '04'}
+            title="PROTOCOLO"
+          />
+          <RankingRules tiers={data.tiers} />
+        </section>
       </div>
     </main>
   );
@@ -225,6 +234,13 @@ function PageHeader({
             </div>
           </div>
         </div>
+        <a
+          href="#protocolo"
+          className="relative mt-4 inline-flex items-center gap-1.5 mono text-[10px] uppercase tracking-widest transition-colors hover:text-[var(--neon-cyan)]"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          // COMO_FUNCIONA_O_RANKING ↓
+        </a>
       </div>
     </header>
   );

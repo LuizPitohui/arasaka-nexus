@@ -202,6 +202,9 @@ def _rank_payload(tier: int) -> dict:
         "slug": rank.slug,
         "name": rank.name,
         "emblem": f"/emblems/{rank.tier:02d}-{rank.slug}.png",
+        # Limite superior do percentil pra entrar nesse tier. Usado pela UI
+        # de regras pra mostrar "top X%" ao lado do nome do rank.
+        "max_percentile": rank.max_percentile,
     }
 
 
