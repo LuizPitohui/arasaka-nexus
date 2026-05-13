@@ -56,7 +56,7 @@ type ReadingList = {
   description: string;
   is_public: boolean;
   item_count: number;
-  items: { id: number; manga: MangaSummary; position: number }[];
+  items: { id: number; manga: MangaSummary; position: number; added_at: string }[];
 };
 
 type LibraryOverview = {
@@ -1042,147 +1042,215 @@ function ListCard({
   onDelete: (id: number) => void;
   index: number;
 }) {
+  // Mostra os ULTIMOS 5 mangas adicionados (added_at desc). Sem scroll
+  // horizontal — capas empilhadas estilo deck. Click no card abre a
+  // pagina dedicada da lista com filtros + busca + todos os itens.
+  const recentItems = useMemo(() => {
+    const sorted = [...list.items].sort((a, b) =>
+      (b.added_at || '').localeCompare(a.added_at || ''),
+    );
+    return sorted.slice(0, 5);
+  }, [list.items]);
+
   return (
     <article
-      className="corners-sm p-5 relative overflow-hidden rank-row-in transition-all"
+      className="rank-row-in"
       style={
         {
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border-faint)',
           animationDelay: `${Math.min(index * 40, 360)}ms`,
         } as React.CSSProperties
       }
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--border-faint)';
-      }}
+    >
+      <Link
+        href={`/library/lists/${list.id}`}
+        className="group corners-sm p-5 relative overflow-hidden transition-all block"
+        style={{
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-faint)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = '0 8px 24px rgba(220,38,38,0.12)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = 'var(--border-faint)';
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background:
+              'linear-gradient(90deg, var(--arasaka-red) 0%, transparent 40%)',
+            opacity: 0.6,
+          }}
+        />
+        <header className="flex items-start justify-between mb-3 gap-2">
+          <div className="min-w-0 flex-1">
+            <h3
+              className="text-lg font-bold truncate transition-colors group-hover:text-[var(--arasaka-red)]"
+              style={{ color: 'var(--fg-primary)' }}
+            >
+              {list.name}
+            </h3>
+            <p
+              className="mono text-[10px] uppercase tracking-widest mt-0.5 flex items-center gap-1.5 flex-wrap"
+              style={{ color: 'var(--fg-muted)' }}
+            >
+              <Layers className="w-3 h-3" />
+              {list.item_count.toString().padStart(2, '0')} ENTRADAS
+              {list.is_public && (
+                <span
+                  className="px-1 py-0.5"
+                  style={{
+                    background: 'var(--neon-cyan)',
+                    color: 'var(--bg-base)',
+                    letterSpacing: '0.1em',
+                    fontSize: 9,
+                  }}
+                >
+                  PUB
+                </span>
+              )}
+            </p>
+          </div>
+          {/* Botoes dentro do Link precisam preventDefault */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete(list.id);
+            }}
+            className="p-1.5 transition-colors relative z-10"
+            style={{
+              color: 'var(--fg-muted)',
+              border: '1px solid transparent',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--arasaka-red)';
+              e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--fg-muted)';
+              e.currentTarget.style.borderColor = 'transparent';
+            }}
+            title="Excluir lista"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </header>
+        {list.description && (
+          <p
+            className="text-xs mb-3 line-clamp-2"
+            style={{ color: 'var(--fg-secondary)' }}
+          >
+            {list.description}
+          </p>
+        )}
+        {list.item_count === 0 ? (
+          <p
+            className="mono text-[10px] uppercase tracking-widest italic py-4 text-center"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // EMPTY_INDEX — adicione obras na pagina de detalhe
+          </p>
+        ) : (
+          <CoverStack items={recentItems} extra={list.item_count - recentItems.length} />
+        )}
+        <div
+          className="mt-3 flex items-center justify-between mono text-[10px] uppercase tracking-widest"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          <span>// {recentItems.length === 0 ? 'sem' : 'ultimas'} adicoes</span>
+          <span
+            className="flex items-center gap-1 transition-colors group-hover:text-[var(--arasaka-red)]"
+          >
+            ABRIR LISTA <ChevronRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </span>
+        </div>
+      </Link>
+    </article>
+  );
+}
+
+// Deck de capas empilhadas com offset crescente. 5 covers max — extras
+// viram badge "+N" sobre a ultima.
+function CoverStack({
+  items,
+  extra,
+}: {
+  items: ReadingList['items'];
+  extra: number;
+}) {
+  if (items.length === 0) return null;
+  const W = 72;
+  const H = W * 1.5;
+  const OFFSET = 22;
+  const totalW = W + OFFSET * (items.length - 1);
+  return (
+    <div
+      className="relative"
+      style={{ height: H, width: '100%' }}
+      aria-label={`${items.length} capas recentes`}
     >
       <div
         style={{
           position: 'absolute',
-          top: 0,
           left: 0,
-          right: 0,
-          height: 2,
-          background:
-            'linear-gradient(90deg, var(--arasaka-red) 0%, transparent 40%)',
-          opacity: 0.6,
+          top: 0,
+          height: H,
+          width: totalW,
         }}
-      />
-      <header className="flex items-start justify-between mb-3 gap-2">
-        <div className="min-w-0 flex-1">
-          <h3
-            className="text-lg font-bold truncate"
-            style={{ color: 'var(--fg-primary)' }}
+      >
+        {items.map((item, i) => (
+          <div
+            key={item.id}
+            className="absolute corners-sm overflow-hidden transition-transform"
+            style={{
+              left: i * OFFSET,
+              top: 0,
+              width: W,
+              height: H,
+              background: 'var(--bg-base)',
+              border: '1px solid var(--border-faint)',
+              zIndex: 5 + i,
+              boxShadow:
+                i > 0 ? '-4px 0 10px rgba(0,0,0,0.45)' : 'none',
+            }}
           >
-            {list.name}
-          </h3>
-          <p
-            className="mono text-[10px] uppercase tracking-widest mt-0.5 flex items-center gap-1.5"
-            style={{ color: 'var(--fg-muted)' }}
-          >
-            <Layers className="w-3 h-3" />
-            {list.item_count.toString().padStart(2, '0')} ENTRADAS
-            {list.is_public && (
-              <span
-                className="px-1 py-0.5"
+            <img
+              src={item.manga.cover || '/placeholder.jpg'}
+              alt={item.manga.title}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+            {i === items.length - 1 && extra > 0 && (
+              <div
+                aria-hidden
+                className="absolute inset-0 flex items-center justify-center"
                 style={{
-                  background: 'var(--neon-cyan)',
-                  color: 'var(--bg-base)',
-                  letterSpacing: '0.1em',
-                  fontSize: 9,
-                  marginLeft: 6,
+                  background: 'rgba(0,0,0,0.7)',
+                  color: '#fff',
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 900,
+                  fontSize: 22,
+                  letterSpacing: '0.02em',
                 }}
               >
-                PUB
-              </span>
+                +{extra}
+              </div>
             )}
-          </p>
-        </div>
-        <button
-          onClick={() => onDelete(list.id)}
-          className="p-1.5 transition-colors"
-          style={{
-            color: 'var(--fg-muted)',
-            border: '1px solid transparent',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = 'var(--arasaka-red)';
-            e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = 'var(--fg-muted)';
-            e.currentTarget.style.borderColor = 'transparent';
-          }}
-          title="Excluir lista"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-      </header>
-      {list.description && (
-        <p
-          className="text-xs mb-3 line-clamp-2"
-          style={{ color: 'var(--fg-secondary)' }}
-        >
-          {list.description}
-        </p>
-      )}
-      {list.item_count === 0 ? (
-        <p
-          className="mono text-[10px] uppercase tracking-widest italic py-4 text-center"
-          style={{ color: 'var(--fg-muted)' }}
-        >
-          // EMPTY_INDEX — adicione obras na pagina de detalhe
-        </p>
-      ) : (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {list.items.slice(0, 7).map((item) => (
-            <Link
-              key={item.id}
-              href={`/manga/${item.manga.id}`}
-              className="shrink-0 corners-sm overflow-hidden transition-all"
-              style={{
-                width: 64,
-                aspectRatio: '2 / 3',
-                background: 'var(--bg-base)',
-                border: '1px solid var(--border-faint)',
-              }}
-              title={item.manga.title}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-faint)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <img
-                src={item.manga.cover || '/placeholder.jpg'}
-                alt={item.manga.title}
-                className="h-full w-full object-cover"
-              />
-            </Link>
-          ))}
-          {list.item_count > 7 && (
-            <div
-              className="shrink-0 corners-sm flex items-center justify-center mono text-[10px] uppercase tracking-widest"
-              style={{
-                width: 64,
-                aspectRatio: '2 / 3',
-                background: 'var(--bg-base)',
-                border: '1px solid var(--border-faint)',
-                color: 'var(--fg-muted)',
-              }}
-            >
-              +{list.item_count - 7}
-            </div>
-          )}
-        </div>
-      )}
-    </article>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
