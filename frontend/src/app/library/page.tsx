@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -964,11 +964,27 @@ function ListsTab({
   creating: boolean;
   onDelete: (id: number) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const trimmed = newListName.trim();
+
+  // Submit guarded: se input vazio, foca + toast em vez de ficar
+  // disabled-darkened sem feedback ("obscurecido sem acontecer nada").
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (creating) return;
+    if (!trimmed) {
+      inputRef.current?.focus();
+      toast.error('Digite um nome pra lista primeiro.');
+      return;
+    }
+    onCreate(e);
+  };
+
   return (
     <div>
       {/* Form de criação */}
       <form
-        onSubmit={onCreate}
+        onSubmit={handleSubmit}
         className="mb-8 corners-sm p-4 max-w-2xl"
         style={{
           background: 'var(--bg-elevated)',
@@ -983,6 +999,7 @@ function ListsTab({
         </p>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
+            ref={inputRef}
             value={newListName}
             onChange={(e) => setNewListName(e.target.value)}
             placeholder="Ex: Para reler, Webtoons, Concluídos..."
@@ -996,19 +1013,38 @@ function ListsTab({
             onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border-mid)')}
             maxLength={80}
           />
+          {/* Botao SEMPRE clickavel — sem disabled. Se nome vazio, handler
+              foca o input + toast (em vez de parecer obscurecido sem reagir,
+              feedback original do user). */}
           <button
             type="submit"
-            disabled={creating || !newListName.trim()}
-            className="mono flex items-center justify-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-widest disabled:opacity-40 transition-colors"
+            className="mono flex items-center justify-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-widest transition-colors"
             style={{
-              background: 'var(--arasaka-red)',
+              background: creating
+                ? 'var(--arasaka-red-deep)'
+                : 'var(--arasaka-red)',
               color: '#fff',
               border: '1px solid var(--arasaka-red)',
+              cursor: creating ? 'wait' : 'pointer',
+              opacity: creating ? 0.7 : 1,
+            }}
+            onMouseEnter={(e) => {
+              if (!creating)
+                e.currentTarget.style.background = 'var(--arasaka-red-hover)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--arasaka-red)';
             }}
           >
-            <Plus className="w-4 h-4" /> CRIAR
+            <Plus className="w-4 h-4" /> {creating ? 'CRIANDO...' : 'CRIAR'}
           </button>
         </div>
+        <p
+          className="mono text-[10px] uppercase tracking-widest mt-3"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          // dica: tambem da pra criar lista direto na pagina de qualquer manga
+        </p>
       </form>
 
       {lists.length === 0 ? (
