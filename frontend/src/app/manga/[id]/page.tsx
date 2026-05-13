@@ -1103,18 +1103,38 @@ function SourceSwitcher({
 
   return (
     <div
-      className="mb-8 p-4 corners-sm"
+      className="mb-8 p-5 corners-sm relative overflow-hidden"
       style={{
         background: 'var(--bg-elevated)',
-        border: '1px solid var(--border-faint)',
+        border: '1px solid var(--arasaka-red)',
       }}
     >
-      <p
-        className="mono text-[10px] uppercase tracking-[0.3em] mb-3"
-        style={{ color: 'var(--fg-muted)' }}
-      >
-        // {sources.length} FONTES — SELECT_STREAM
-      </p>
+      {/* top rail */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          background:
+            'linear-gradient(90deg, var(--arasaka-red) 0%, var(--arasaka-red) 30%, transparent 100%)',
+        }}
+      />
+      <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+        <p
+          className="mono text-[11px] uppercase tracking-[0.3em] font-bold"
+          style={{ color: 'var(--arasaka-red)' }}
+        >
+          // {sources.length} FONTES DISPONIVEIS
+        </p>
+        <p
+          className="mono text-[10px] uppercase tracking-widest"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          escolha de qual variante ler
+        </p>
+      </div>
       <div className="flex flex-wrap gap-2">
         {sources.map((s) => {
           const active = s.id === currentId;
@@ -1123,37 +1143,44 @@ function SourceSwitcher({
             SOURCE_LABEL[s.source_id] ??
             (s.source_id.toUpperCase() + '_STREAM')
           );
+
+          const inner = (
+            <>
+              <span style={{ fontWeight: 700 }}>{active ? '▸ ' : ''}{label}</span>
+              <span
+                className="tabular-nums"
+                style={{ color: active ? 'var(--arasaka-red)' : 'var(--fg-muted)' }}
+              >
+                [{String(s.chapter_count).padStart(3, '0')} caps]
+              </span>
+              {isMax && (
+                <span
+                  className="mono text-[9px] px-1.5 py-0.5 uppercase tracking-widest"
+                  style={{
+                    background: 'var(--arasaka-red)',
+                    color: '#fff',
+                    letterSpacing: '0.12em',
+                    fontWeight: 700,
+                  }}
+                >
+                  RECOMENDADO
+                </span>
+              )}
+            </>
+          );
+
           if (active) {
             return (
               <span
                 key={s.id}
-                className="mono text-[11px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-2"
+                className="mono text-[11px] uppercase tracking-widest px-3 py-2.5 inline-flex items-center gap-2"
                 style={{
                   border: '1px solid var(--arasaka-red)',
-                  background: 'rgba(220,38,38,0.1)',
+                  background: 'rgba(220,38,38,0.12)',
                   color: 'var(--arasaka-red)',
-                  fontWeight: 700,
                 }}
               >
-                ▸ {label}
-                <span
-                  className="tabular-nums"
-                  style={{ color: 'var(--fg-muted)' }}
-                >
-                  [{String(s.chapter_count).padStart(3, '0')}]
-                </span>
-                {isMax && sources.length > 1 && (
-                  <span
-                    className="text-[9px] px-1 py-0.5"
-                    style={{
-                      background: 'var(--arasaka-red)',
-                      color: '#fff',
-                      letterSpacing: '0.1em',
-                    }}
-                  >
-                    MAX
-                  </span>
-                )}
+                {inner}
               </span>
             );
           }
@@ -1161,40 +1188,24 @@ function SourceSwitcher({
             <Link
               key={s.id}
               href={`/manga/${s.id}`}
-              className="mono text-[11px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-2 transition-colors"
+              className="mono text-[11px] uppercase tracking-widest px-3 py-2.5 inline-flex items-center gap-2 transition-colors"
               style={{
                 border: '1px solid var(--border-mid)',
-                background: 'transparent',
+                background: 'var(--bg-base)',
                 color: 'var(--fg-secondary)',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--arasaka-red)';
                 e.currentTarget.style.color = 'var(--arasaka-red)';
+                e.currentTarget.style.background = 'rgba(220,38,38,0.06)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = 'var(--border-mid)';
                 e.currentTarget.style.color = 'var(--fg-secondary)';
+                e.currentTarget.style.background = 'var(--bg-base)';
               }}
             >
-              {label}
-              <span
-                className="tabular-nums"
-                style={{ color: 'var(--fg-muted)' }}
-              >
-                [{String(s.chapter_count).padStart(3, '0')}]
-              </span>
-              {isMax && (
-                <span
-                  className="text-[9px] px-1 py-0.5"
-                  style={{
-                    background: 'var(--arasaka-red)',
-                    color: '#fff',
-                    letterSpacing: '0.1em',
-                  }}
-                >
-                  MAX
-                </span>
-              )}
+              {inner}
             </Link>
           );
         })}

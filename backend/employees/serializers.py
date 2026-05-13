@@ -44,6 +44,7 @@ class MangaListSerializer(serializers.ModelSerializer):
     categories = serializers.SerializerMethodField()
     cover = serializers.SerializerMethodField()
     work_id = serializers.IntegerField(read_only=True, allow_null=True)
+    work_sources_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Manga
@@ -58,6 +59,7 @@ class MangaListSerializer(serializers.ModelSerializer):
             "is_active",
             "categories",
             "work_id",
+            "work_sources_count",
         ]
 
     def get_categories(self, obj: Manga) -> list[str]:
@@ -65,6 +67,25 @@ class MangaListSerializer(serializers.ModelSerializer):
 
     def get_cover(self, obj: Manga) -> str:
         return obj.cover_url
+
+    def get_work_sources_count(self, obj: Manga) -> int:
+        """Numero de variantes do mesmo Work no catalogo local. Frontend
+        usa pra mostrar badge "N FONTES" no card quando >= 2 — UI
+        comunica visualmente que existem outras fontes pra esta obra.
+
+        Cacheado em ``self.context`` pra evitar N+1 em listas longas. DRF
+        compartilha o mesmo context entre instances quando many=True.
+        """
+        if not obj.work_id:
+            return 1
+        if "_work_counts" not in self.context:
+            self.context["_work_counts"] = {}
+        cache = self.context["_work_counts"]
+        if obj.work_id not in cache:
+            cache[obj.work_id] = Manga.objects.filter(
+                work_id=obj.work_id, is_active=True
+            ).count()
+        return cache[obj.work_id]
 
 
 class MangaDetailSerializer(serializers.ModelSerializer):

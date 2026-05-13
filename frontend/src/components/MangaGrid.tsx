@@ -15,6 +15,9 @@ export type GridManga = {
   status?: string;
   categories?: string[];
   content_rating?: string;
+  /** Quando > 1 indica que a obra (Work canonical) tem variantes em
+   *  multiplas fontes. Card renderiza badge "N FONTES". */
+  work_sources_count?: number;
 };
 
 export function MangaGrid({ items }: { items: GridManga[] }) {
@@ -108,6 +111,22 @@ export function MangaCard({
             }}
           >
             {manga.status}
+          </span>
+        )}
+        {/* multi-source chip — obra com 2+ variantes (MangaDex+Mihon+...) */}
+        {(manga.work_sources_count ?? 1) > 1 && (
+          <span
+            className="absolute top-2 right-2 mono text-[9px] px-1.5 py-0.5 uppercase tracking-widest inline-flex items-center gap-1"
+            style={{
+              background: 'rgba(220,38,38,0.18)',
+              border: '1px solid var(--arasaka-red)',
+              color: 'var(--arasaka-red)',
+              zIndex: 4,
+              backdropFilter: 'blur(2px)',
+            }}
+            title={`${manga.work_sources_count} fontes disponiveis`}
+          >
+            ▸ {manga.work_sources_count} FONTES
           </span>
         )}
         {/* hairline ID at bottom */}

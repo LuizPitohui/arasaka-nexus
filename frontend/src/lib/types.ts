@@ -22,6 +22,10 @@ export type MangaSummary = {
   content_rating: ContentRating;
   is_active: boolean;
   categories: string[];
+  /** ID da Work canonica. null se o matcher ainda nao agrupou. */
+  work_id?: number | null;
+  /** Quantas variantes (fontes) existem dessa mesma Work no catalogo. */
+  work_sources_count?: number;
 };
 
 export type Genre = {
