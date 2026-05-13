@@ -77,10 +77,17 @@ def _dedupe_by_work(qs):
     )
     return qs.filter(Q(work__isnull=True) | Q(id=Subquery(best_per_work)))
 
-# Cache key for individual manga detail responses; short TTL since chapter
-# count changes when feeds sync.
-MANGA_DETAIL_CACHE_TTL = 60
+# Cache key for individual manga detail responses. TTL conservador porque
+# chapter_count muda quando o feed sync importa caps novos — invalidacao
+# manual via perform_update/perform_destroy garante consistencia em writes
+# do admin, mas o TTL serve de upper bound pra feeds em background.
+MANGA_DETAIL_CACHE_TTL = 180
 MANGA_DETAIL_CACHE_KEY = "manga:detail:{id}"
+
+# Categorias/generos sao quase-imutaveis (so admin altera). Cache mais
+# longo reduz queries repetidas em quem usa o filter sidebar.
+CATEGORY_LIST_CACHE_TTL = 600  # 10 min
+CATEGORY_LIST_CACHE_KEY = "categories:with_counts"
 
 
 class SearchThrottle(UserRateThrottle):
@@ -125,7 +132,16 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], permission_classes=[AllowAny])
     def with_counts(self, request):
-        """Returns every category annotated with how many active mangás use it."""
+        """Returns every category annotated with how many active mangás use it.
+
+        Cacheado em Redis por ``CATEGORY_LIST_CACHE_TTL`` — payload muda
+        raramente (so quando admin renomeia/cria categoria), entao 10min
+        absorve quase todos os hits dos filtros de browse/genres.
+        """
+        cached = cache.get(CATEGORY_LIST_CACHE_KEY)
+        if cached is not None:
+            return Response(cached)
+
         cats = (
             Category.objects.annotate(
                 manga_count=Count("mangas", filter=Q(mangas__is_active=True), distinct=True)
@@ -142,6 +158,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             }
             for c in cats
         ]
+        cache.set(CATEGORY_LIST_CACHE_KEY, data, CATEGORY_LIST_CACHE_TTL)
         return Response(data)
 
 

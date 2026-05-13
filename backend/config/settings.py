@@ -83,6 +83,15 @@ DATABASES = {
         "PASSWORD": os.environ.get("DB_PASSWORD"),
         "HOST": os.environ.get("DB_HOST", "db"),
         "PORT": os.environ.get("DB_PORT", "5432"),
+        # Connection pooling: cada thread reaproveita conexao por 60s antes
+        # de fechar. Com 5 workers × 8 threads gthread = ate 40 conexoes
+        # quentes — economiza ~5-10ms de TCP handshake + auth Postgres
+        # por request. Bem abaixo do max_connections=100 do postgres-global.
+        "CONN_MAX_AGE": 60,
+        # Garante saude da conexao reusada — pings antes de servir requests
+        # caso o Postgres tenha matado a conexao silenciosamente (firewall
+        # idle timeout, restart, etc).
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 
