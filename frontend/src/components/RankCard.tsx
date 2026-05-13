@@ -64,7 +64,7 @@ export default function RankCard() {
     );
   }
 
-  const unranked = data.score === 0 || data.position === null;
+  const unranked = data.score === 0;
   const progress = data.progress ?? null;
   const countdown = timeUntil(data.season.ends_at);
   const totalAgents = data.total_agents ?? 0;

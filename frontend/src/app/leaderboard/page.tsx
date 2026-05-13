@@ -253,7 +253,7 @@ function HeroCard({ me, totalAgents }: { me: RankEntry; totalAgents: number }) {
   const animatedScore = useCountUp(me.score, 1300);
   const progress = me.progress ?? null;
   const breakdown = me.breakdown;
-  const unranked = me.score === 0 || me.position === null;
+  const unranked = me.score === 0;
   const percent = progress?.percent ?? (unranked ? 0 : 100);
 
   return (

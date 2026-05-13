@@ -457,7 +457,35 @@ def push_test(request):
 # ---------------------------------------------------------------------------
 # Ranking competitivo
 # ---------------------------------------------------------------------------
-def _compute_progress_to_next(stats, season) -> dict | None:
+def _compute_live_position_and_tier(stats, season) -> tuple[int | None, int]:
+    """Calcula posição e tier AO VIVO, sem esperar o recompute diário.
+
+    O recompute do beat só roda 1x/dia (04h) e atualiza ``position`` /
+    ``rank_tier`` no DB. Entre rodadas, esses campos ficam defasados — pior,
+    ficam ``null`` pra users que pontuaram pela primeira vez na janela.
+
+    Aqui contamos quantos users tem score MAIOR (= live position do user)
+    e derivamos o tier do percentil resultante. Custo: 2 queries simples
+    cobertas pelo index ``(season, -score)`` no UserSeasonStats.
+    """
+    if stats.score <= 0:
+        return None, 0
+
+    higher = UserSeasonStats.objects.filter(
+        season=season, score__gt=stats.score
+    ).count()
+    live_position = higher + 1
+
+    total = UserSeasonStats.objects.filter(season=season, score__gt=0).count()
+    if total == 0:
+        return live_position, stats.rank_tier
+    percentile = (live_position / total) * 100.0
+    from .ranking import rank_for_percentile
+
+    return live_position, rank_for_percentile(percentile).tier
+
+
+def _compute_progress_to_next(stats, season, current_tier: int) -> dict | None:
     """Calcula quanto falta pro próximo tier baseado no score do user que
     está sentado na borda do percentil necessário.
 
@@ -466,6 +494,9 @@ def _compute_progress_to_next(stats, season) -> dict | None:
     cuja posição corresponde ao limite superior do próximo tier — superá-lo
     em score é suficiente pra subir no próximo recompute.
 
+    ``current_tier`` é passado explicitamente (live tier, não persistido)
+    pra que progress reflita o estado real, não o cache do recompute.
+
     Devolve None se o user já está no tier máximo.
     """
     import math
@@ -473,7 +504,7 @@ def _compute_progress_to_next(stats, season) -> dict | None:
     from .ranking import RANKS as _RANKS
 
     next_tier = next(
-        (r for r in sorted(_RANKS, key=lambda x: x.tier) if r.tier > stats.rank_tier),
+        (r for r in sorted(_RANKS, key=lambda x: x.tier) if r.tier > current_tier),
         None,
     )
     if next_tier is None:
@@ -547,8 +578,14 @@ def rank_me(request):
     stats, _ = UserSeasonStats.objects.select_related("user", "user__profile").get_or_create(
         user=request.user, season=season
     )
+    live_position, live_tier = _compute_live_position_and_tier(stats, season)
     payload = UserRankSerializer(stats, context={"request": request}).data
-    payload["progress"] = _compute_progress_to_next(stats, season)
+    # Sobrescreve com valores ao vivo pra UX não esperar o recompute diário.
+    payload["position"] = live_position
+    payload["rank"] = _rank_payload(live_tier)
+    if live_tier > stats.peak_rank_tier:
+        payload["peak_rank"] = _rank_payload(live_tier)
+    payload["progress"] = _compute_progress_to_next(stats, season, live_tier)
     payload["breakdown"] = _compute_points_breakdown(request.user.id, season.id)
     payload["total_agents"] = _total_agents(season)
     return Response(payload)
@@ -585,6 +622,18 @@ def leaderboard(request):
         .order_by("-score", "id")[:limit]
     )
     entries = UserRankSerializer(qs, many=True, context={"request": request}).data
+    # Override position pra refletir o ranking ao vivo (qs ja vem ordenado
+    # por -score), em vez do snapshot do ultimo recompute. Idem pro tier:
+    # recalcula via percentil sobre o total de agentes pontuando.
+    total_agents = _total_agents(season)
+    for i, entry in enumerate(entries):
+        live_pos = i + 1
+        entry["position"] = live_pos
+        if total_agents > 0:
+            from .ranking import rank_for_percentile
+
+            pct = (live_pos / total_agents) * 100.0
+            entry["rank"] = _rank_payload(rank_for_percentile(pct).tier)
 
     me_stats = (
         UserSeasonStats.objects.filter(user=request.user, season=season)
@@ -593,8 +642,13 @@ def leaderboard(request):
     )
     me = None
     if me_stats:
+        live_position, live_tier = _compute_live_position_and_tier(me_stats, season)
         me = UserRankSerializer(me_stats, context={"request": request}).data
-        me["progress"] = _compute_progress_to_next(me_stats, season)
+        me["position"] = live_position
+        me["rank"] = _rank_payload(live_tier)
+        if live_tier > me_stats.peak_rank_tier:
+            me["peak_rank"] = _rank_payload(live_tier)
+        me["progress"] = _compute_progress_to_next(me_stats, season, live_tier)
         me["breakdown"] = _compute_points_breakdown(request.user.id, season.id)
 
     return Response(
@@ -603,7 +657,7 @@ def leaderboard(request):
             "entries": entries,
             "me": me,
             "tiers": [_rank_payload(r.tier) for r in RANKS],
-            "total_agents": _total_agents(season),
+            "total_agents": total_agents,
         }
     )
 
