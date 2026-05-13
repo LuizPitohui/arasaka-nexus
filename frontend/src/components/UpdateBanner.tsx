@@ -3,12 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Download, ExternalLink, X } from 'lucide-react';
 
-import {
-  APP_VERSION,
-  isNewerVersion,
-  isStandaloneMode,
-  useLatestRelease,
-} from '@/lib/version';
+import { APP_VERSION, isNewerVersion } from '@/lib/version';
+import { isStandaloneMode, useLatestRelease } from '@/lib/version-client';
 
 /**
  * Banner fixo no topo avisando sobre nova versao do APK Android.
