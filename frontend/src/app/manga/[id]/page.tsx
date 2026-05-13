@@ -96,7 +96,12 @@ export default function MangaDetails() {
   // Mapa chapter_id -> {completed} pra renderizar badge "lido" no chapter
   // list. Carregado em /accounts/progress/?manga=<id>. Set vazio quando
   // usuário não está autenticado.
-  const [readChapters, setReadChapters] = useState<Set<number>>(new Set());
+  // Indexamos por chapter.number (string) e não chapter.id pra suportar
+  // status compartilhado entre variantes do mesmo Work (MangaDex, Mihon
+  // etc). Backend devolve progress de TODAS as variantes via GET
+  // ?manga=<id> — sem essa normalização, ler cap 10 numa fonte não
+  // marcaria como lido em outra variante.
+  const [readChapters, setReadChapters] = useState<Set<string>>(new Set());
   const authed =
     typeof window !== 'undefined' && Boolean(tokenStore.getAccess());
 
@@ -206,15 +211,15 @@ export default function MangaDetails() {
     let cancelled = false;
     api
       .get<
-        | { results: { chapter: number; completed: boolean }[] }
-        | { chapter: number; completed: boolean }[]
+        | { results: { chapter_number: string; completed: boolean }[] }
+        | { chapter_number: string; completed: boolean }[]
       >(`/accounts/progress/?manga=${params.id}&page_size=500`)
       .then((res) => {
         if (cancelled) return;
         const list = Array.isArray(res) ? res : res.results ?? [];
-        const done = new Set<number>();
+        const done = new Set<string>();
         for (const row of list) {
-          if (row.completed) done.add(row.chapter);
+          if (row.completed) done.add(String(row.chapter_number));
         }
         setReadChapters(done);
       })
@@ -227,16 +232,16 @@ export default function MangaDetails() {
   }, [params?.id, authed]);
 
   const toggleChapterRead = useCallback(
-    async (chapterId: number, nextRead: boolean) => {
+    async (chapterId: number, chapterNumber: string, nextRead: boolean) => {
       if (!authed) {
         router.push(`/login?next=/manga/${params?.id}`);
         return;
       }
-      // Otimista
+      // Otimista — indexado por number (chave compartilhada entre variantes)
       setReadChapters((prev) => {
         const copy = new Set(prev);
-        if (nextRead) copy.add(chapterId);
-        else copy.delete(chapterId);
+        if (nextRead) copy.add(chapterNumber);
+        else copy.delete(chapterNumber);
         return copy;
       });
       try {
@@ -249,8 +254,8 @@ export default function MangaDetails() {
         // Rollback
         setReadChapters((prev) => {
           const copy = new Set(prev);
-          if (nextRead) copy.delete(chapterId);
-          else copy.add(chapterId);
+          if (nextRead) copy.delete(chapterNumber);
+          else copy.add(chapterNumber);
           return copy;
         });
         toast.error('// FALHA AO SALVAR PROGRESSO');
@@ -270,15 +275,17 @@ export default function MangaDetails() {
       }
       const target = sortedChapters.find((c) => c.id === chapterId);
       if (!target) return;
-      const ids = sortedChapters
-        .filter((c) => Number(c.number) <= Number(target.number))
-        .map((c) => c.id);
+      const chaptersToMark = sortedChapters.filter(
+        (c) => Number(c.number) <= Number(target.number),
+      );
+      const ids = chaptersToMark.map((c) => c.id);
+      const numbers = chaptersToMark.map((c) => c.number);
       if (ids.length === 0) return;
-      // Otimista
+      // Otimista — atualiza set por number
       const before = new Set(readChapters);
       setReadChapters((prev) => {
         const copy = new Set(prev);
-        for (const id of ids) copy.add(id);
+        for (const n of numbers) copy.add(n);
         return copy;
       });
       try {
@@ -435,8 +442,8 @@ type MangaDetailBodyProps = {
   notifyEnabled: boolean;
   notifyLoading: boolean;
   toggleNotify: () => Promise<void>;
-  readChapters: Set<number>;
-  onToggleRead: (chapterId: number, nextRead: boolean) => Promise<void>;
+  readChapters: Set<string>;
+  onToggleRead: (chapterId: number, chapterNumber: string, nextRead: boolean) => Promise<void>;
   onMarkUpTo: (chapterId: number, sortedChapters: Chapter[]) => Promise<void>;
 };
 
@@ -764,8 +771,8 @@ function ChapterList({
   chapters: Chapter[];
   loading: boolean;
   authed: boolean;
-  readChapters: Set<number>;
-  onToggleRead: (chapterId: number, nextRead: boolean) => Promise<void>;
+  readChapters: Set<string>;
+  onToggleRead: (chapterId: number, chapterNumber: string, nextRead: boolean) => Promise<void>;
   onMarkUpTo: (chapterId: number, sortedChapters: Chapter[]) => Promise<void>;
 }) {
   const [filter, setFilter] = useState('');
@@ -891,7 +898,7 @@ function ChapterList({
         }}
       >
         {filtered.map((chapter) => {
-          const isRead = readChapters.has(chapter.id);
+          const isRead = readChapters.has(chapter.number);
           return (
             <ChapterRow
               key={chapter.id}
@@ -925,7 +932,7 @@ function ChapterRow({
   chapter: Chapter;
   isRead: boolean;
   authed: boolean;
-  onToggleRead: (chapterId: number, nextRead: boolean) => Promise<void>;
+  onToggleRead: (chapterId: number, chapterNumber: string, nextRead: boolean) => Promise<void>;
   onMarkUpTo: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -936,7 +943,7 @@ function ChapterRow({
     if (busy) return;
     setBusy(true);
     try {
-      await onToggleRead(chapter.id, !isRead);
+      await onToggleRead(chapter.id, chapter.number, !isRead);
     } finally {
       setBusy(false);
     }

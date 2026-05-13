@@ -94,6 +94,34 @@ def profile_avatar(request):
 
 
 # ---------------------------------------------------------------------------
+# Work-aware helpers
+# ---------------------------------------------------------------------------
+def _work_sibling_manga_ids(manga_id) -> list[int]:
+    """Devolve IDs de TODAS as variantes do Work do ``manga_id``.
+
+    Se o manga não tem ``work_id`` (importação sem matcher canônico),
+    devolve só ``[manga_id]``. Quando tem Work, devolve todas as
+    variantes — usado pra unificar favoritar/listar/progresso entre
+    fontes diferentes do mesmo mangá ("Solo Leveling" MangaDex + Mihon +
+    MangaPlus passam a contar como o mesmo).
+    """
+    from employees.models import Manga
+
+    try:
+        manga_id = int(manga_id)
+    except (TypeError, ValueError):
+        return []
+    target = Manga.objects.filter(id=manga_id).only("id", "work_id").first()
+    if not target:
+        return []
+    if not target.work_id:
+        return [target.id]
+    return list(
+        Manga.objects.filter(work_id=target.work_id).values_list("id", flat=True)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Favorites
 # ---------------------------------------------------------------------------
 class FavoriteViewSet(viewsets.ModelViewSet):
@@ -108,21 +136,49 @@ class FavoriteViewSet(viewsets.ModelViewSet):
             .prefetch_related("manga__categories")
         )
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def create(self, request, *args, **kwargs):
+        """POST /favorites/  body: {"manga_id": X}
+
+        Idempotente em nivel de Work: se ja existe Favorite do user pra
+        qualquer variante do mesmo Work, devolve essa (200) em vez de
+        criar duplicata.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        manga = serializer.validated_data.get("manga")
+        sibling_ids = _work_sibling_manga_ids(manga.id) if manga else []
+        existing = (
+            Favorite.objects.filter(user=request.user, manga_id__in=sibling_ids)
+            .select_related("manga")
+            .prefetch_related("manga__categories")
+            .first()
+            if sibling_ids
+            else None
+        )
+        if existing:
+            return Response(
+                FavoriteSerializer(existing, context={"request": request}).data,
+                status=status.HTTP_200_OK,
+            )
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="check")
     def check(self, request):
         """``GET /favorites/check/?manga_id=<id>``
 
         Resposta inclui ``favorite_id`` e ``notify_on_new_chapter`` quando
-        favoritado, pra UI conseguir PATCHar a preferencia sem nova lookup.
+        favoritado. Olha tambem as variantes do mesmo Work — favoritar uma
+        variante reflete em todas.
         """
         manga_id = request.query_params.get("manga_id")
         if not manga_id:
             return Response({"error": "manga_id é obrigatório"}, status=400)
+        sibling_ids = _work_sibling_manga_ids(manga_id)
+        if not sibling_ids:
+            return Response({"is_favorite": False})
         fav = (
-            Favorite.objects.filter(user=request.user, manga_id=manga_id)
+            Favorite.objects.filter(user=request.user, manga_id__in=sibling_ids)
             .only("id", "notify_on_new_chapter")
             .first()
         )
@@ -138,8 +194,13 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["delete"], url_path="by-manga/(?P<manga_id>[^/.]+)")
     def by_manga(self, request, manga_id=None):
-        """``DELETE /favorites/by-manga/<manga_id>/`` to unfavorite without listing."""
-        deleted, _ = Favorite.objects.filter(user=request.user, manga_id=manga_id).delete()
+        """``DELETE /favorites/by-manga/<manga_id>/`` — desfavorita qualquer
+        variante do mesmo Work (UI nao precisa saber qual manga_id armazenado).
+        """
+        sibling_ids = _work_sibling_manga_ids(manga_id) or [manga_id]
+        deleted, _ = Favorite.objects.filter(
+            user=request.user, manga_id__in=sibling_ids
+        ).delete()
         if not deleted:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -163,20 +224,33 @@ class ReadingListViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="add")
     def add_manga(self, request, pk=None):
+        """Adiciona mangá à lista. Idempotente em nivel de Work — se qualquer
+        variante do mesmo Work ja esta na lista, devolve o item existente.
+        """
         reading_list = self.get_object()
         serializer = ReadingListItemSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         manga = serializer.validated_data["manga"]
-        item, created = ReadingListItem.objects.get_or_create(
-            reading_list=reading_list,
-            manga=manga,
-            defaults={"position": serializer.validated_data.get("position", 0)},
+        sibling_ids = _work_sibling_manga_ids(manga.id)
+        existing = (
+            ReadingListItem.objects.filter(
+                reading_list=reading_list, manga_id__in=sibling_ids
+            )
+            .select_related("manga")
+            .first()
+            if sibling_ids
+            else None
         )
-        if not created:
+        if existing:
             return Response(
-                {"detail": "Mangá já está nesta lista."},
+                ReadingListItemSerializer(existing).data,
                 status=status.HTTP_200_OK,
             )
+        item = ReadingListItem.objects.create(
+            reading_list=reading_list,
+            manga=manga,
+            position=serializer.validated_data.get("position", 0),
+        )
         return Response(
             ReadingListItemSerializer(item).data, status=status.HTTP_201_CREATED
         )
@@ -187,13 +261,40 @@ class ReadingListViewSet(viewsets.ModelViewSet):
         url_path="items/(?P<manga_id>[^/.]+)",
     )
     def remove_manga(self, request, pk=None, manga_id=None):
+        """Remove qualquer variante do Work do ``manga_id`` da lista — UI
+        nao precisa lembrar qual variante o item esta armazenado."""
         reading_list = self.get_object()
+        sibling_ids = _work_sibling_manga_ids(manga_id) or [manga_id]
         deleted, _ = ReadingListItem.objects.filter(
-            reading_list=reading_list, manga_id=manga_id
+            reading_list=reading_list, manga_id__in=sibling_ids
         ).delete()
         if not deleted:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"], url_path="contains")
+    def contains(self, request, pk=None):
+        """``GET /lists/<id>/contains/?manga_id=<x>`` — verifica se algum
+        item da lista pertence ao mesmo Work do ``manga_id``. Frontend
+        usa pra mostrar "+ Adicionar" vs "✓ Na lista" em cards de variante.
+        """
+        reading_list = self.get_object()
+        manga_id = request.query_params.get("manga_id")
+        if not manga_id:
+            return Response({"error": "manga_id é obrigatório"}, status=400)
+        sibling_ids = _work_sibling_manga_ids(manga_id)
+        if not sibling_ids:
+            return Response({"contains": False})
+        item = (
+            ReadingListItem.objects.filter(
+                reading_list=reading_list, manga_id__in=sibling_ids
+            )
+            .only("id", "manga_id")
+            .first()
+        )
+        if not item:
+            return Response({"contains": False})
+        return Response({"contains": True, "item_id": item.id, "manga_id": item.manga_id})
 
 
 # ---------------------------------------------------------------------------
@@ -211,10 +312,12 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
         )
         # Filtro por mangá (?manga=<id>) — usado pela página de detalhe pra
         # carregar de uma vez o estado de leitura de todos os capítulos e
-        # marcar os já lidos no chapter list.
+        # marcar os já lidos no chapter list. Expande pra variantes do
+        # mesmo Work (status de leitura compartilhado entre fontes).
         manga_id = self.request.query_params.get("manga")
         if manga_id:
-            qs = qs.filter(chapter__manga_id=manga_id)
+            sibling_ids = _work_sibling_manga_ids(manga_id) or [manga_id]
+            qs = qs.filter(chapter__manga_id__in=sibling_ids)
         return qs
 
     @action(detail=False, methods=["post"], url_path="bulk")
