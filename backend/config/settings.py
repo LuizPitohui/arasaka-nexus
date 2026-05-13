@@ -223,6 +223,19 @@ CELERY_BEAT_SCHEDULE = {
         # pra mandar so pros users daquela hora local.
         "schedule": crontab(minute=5),
     },
+    "ranking-recompute": {
+        "task": "accounts.recompute_ranks",
+        # Diariamente 04:00 BRT — depois dos cleanups (03:30 / 04:30 ficam
+        # adjacentes mas em outra coluna). Reordena leaderboard global e
+        # atualiza tiers baseado em percentil.
+        "schedule": crontab(minute=0, hour=4),
+    },
+    "ranking-close-season": {
+        "task": "accounts.close_season_if_due",
+        # Horariamente no minuto :10. Quando a season ativa estoura
+        # ends_at, vira inativa e cria a próxima (3 meses).
+        "schedule": crontab(minute=10),
+    },
 }
 
 # Storage limits for the on-demand page mirror

@@ -5,6 +5,7 @@ from .views import (
     FavoriteViewSet,
     ReadingListViewSet,
     ReadingProgressViewSet,
+    leaderboard,
     library_overview,
     library_unread_count,
     profile_avatar,
@@ -14,6 +15,8 @@ from .views import (
     push_subscribe,
     push_test,
     push_unsubscribe,
+    rank_me,
+    seasons_list,
 )
 
 router = DefaultRouter()
@@ -31,5 +34,8 @@ urlpatterns = [
     path("push/status/", push_status, name="push-status"),
     path("push/test/", push_test, name="push-test"),
     path("push/clicked/", push_clicked, name="push-clicked"),
+    path("rank/me/", rank_me, name="rank-me"),
+    path("leaderboard/", leaderboard, name="leaderboard"),
+    path("seasons/", seasons_list, name="seasons-list"),
     path("", include(router.urls)),
 ]

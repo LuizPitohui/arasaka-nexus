@@ -12,6 +12,7 @@ import {
   Menu,
   Shuffle,
   Tag,
+  Trophy,
   User,
   X,
 } from 'lucide-react';
@@ -182,6 +183,15 @@ export function Header() {
                 icon={<Library className="w-3 h-3" />}
               >
                 Vault
+              </NavLink>
+            )}
+            {authed && (
+              <NavLink
+                href="/leaderboard"
+                current={pathname}
+                icon={<Trophy className="w-3 h-3" />}
+              >
+                Ranking
               </NavLink>
             )}
           </nav>
@@ -399,6 +409,18 @@ function MobileDrawer({
               onClick={onClose}
             >
               Vault
+            </DrawerLink>
+          )}
+
+          {authed && (
+            <DrawerLink
+              href="/leaderboard"
+              index={NAV_ITEMS.length + 2}
+              active={pathname === '/leaderboard'}
+              icon={<Trophy className="w-4 h-4" />}
+              onClick={onClose}
+            >
+              Ranking
             </DrawerLink>
           )}
 

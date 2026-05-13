@@ -7,6 +7,7 @@ import { Calendar, Camera, Lock, Save, Shield, ShieldAlert, Trash2 } from 'lucid
 
 import Loader from '@/components/Loader';
 import { PushOptIn } from '@/components/PushOptIn';
+import RankCard from '@/components/RankCard';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
 
@@ -276,6 +277,10 @@ export default function ProfilePage() {
             </div>
           </div>
         </header>
+
+        <div className="mb-10">
+          <RankCard />
+        </div>
 
         <form onSubmit={handleSave} className="space-y-10">
           <Section label="01" title="Bio">

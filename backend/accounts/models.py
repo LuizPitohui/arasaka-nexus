@@ -204,6 +204,11 @@ class ReadingProgress(models.Model):
     )
     page_number = models.PositiveIntegerField(default=0)
     completed = models.BooleanField(default=False)
+    # created_at marca a primeira interação com o capítulo (auto_now_add).
+    # Usado pelo sistema de rank pra estimar tempo de leitura (delta até
+    # updated_at, capado a 30min). Nullable só por compat com rows legadas
+    # (anteriores à migração 0008) — novas linhas sempre têm valor.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -213,3 +218,130 @@ class ReadingProgress(models.Model):
             ),
         ]
         ordering = ["-updated_at"]
+
+
+# ---------------------------------------------------------------------------
+# Ranking competitivo (ver accounts/ranking.py pra constantes)
+# ---------------------------------------------------------------------------
+class Season(models.Model):
+    """Janela de competição de 3 meses. Reset zera score, peak rank é
+    snapshot histórico no UserSeasonStats.
+    """
+
+    name = models.CharField(max_length=80)
+    slug = models.SlugField(unique=True)
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    # Só uma season ativa por vez. Quando ends_at < now, a task close_season
+    # vira essa em False e cria a próxima.
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-starts_at"]
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def current(cls):
+        """Retorna a season ativa (ou None se nenhuma). Cacheado por request
+        via lazy lookup — chamadores que disparam muitas vezes devem cachear
+        externamente.
+        """
+        return cls.objects.filter(is_active=True).order_by("-starts_at").first()
+
+
+class ScoreEvent(models.Model):
+    """Registro imutável de cada concessão de pontos.
+
+    Source-of-truth pra auditoria e recomputação. Constraint única por
+    (user, season, kind, ref) garante idempotência — se o signal disparar
+    2x pro mesmo capítulo, só o primeiro vira pontos.
+    """
+
+    KIND_CHAPTER = "chapter"
+    KIND_WORK_COMPLETE = "work_complete"
+    KIND_READING_TIME = "reading_time"
+    KIND_CHOICES = [
+        (KIND_CHAPTER, "Capítulo lido"),
+        (KIND_WORK_COMPLETE, "Obra completa"),
+        (KIND_READING_TIME, "Tempo de leitura"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="score_events",
+    )
+    season = models.ForeignKey(
+        Season,
+        on_delete=models.CASCADE,
+        related_name="score_events",
+    )
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    # Referência polimórfica leve: pro KIND_CHAPTER/KIND_READING_TIME guarda
+    # chapter_id; pro KIND_WORK_COMPLETE guarda manga_id. Não-FK pra evitar
+    # CASCADE drop quando a obra é removida do catálogo (queremos preservar
+    # o histórico de pontos do user).
+    ref_id = models.PositiveIntegerField()
+    points = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "season", "kind", "ref_id"],
+                name="unique_score_event_per_ref",
+            ),
+        ]
+        indexes = [models.Index(fields=["season", "user"])]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} +{self.points} ({self.kind})"
+
+
+class UserSeasonStats(models.Model):
+    """Snapshot agregado de score+rank por (user, season).
+
+    ``score`` é incrementado atomicamente via F() no signal handler de
+    ScoreEvent. ``position`` e ``rank`` são recomputados pela task
+    ``recompute_ranks`` (Celery beat diário). ``peak_rank`` nunca regride
+    durante a season — guarda o maior tier já alcançado.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="season_stats",
+    )
+    season = models.ForeignKey(
+        Season,
+        on_delete=models.CASCADE,
+        related_name="user_stats",
+    )
+    score = models.PositiveIntegerField(default=0)
+    # Posição 1-based no leaderboard (1 = topo). Pode ficar NULL antes do
+    # primeiro recompute da season.
+    position = models.PositiveIntegerField(null=True, blank=True)
+    rank_tier = models.PositiveSmallIntegerField(default=0)
+    peak_rank_tier = models.PositiveSmallIntegerField(default=0)
+    computed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "season"], name="unique_user_per_season_stats"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["season", "-score"]),
+            models.Index(fields=["season", "position"]),
+        ]
+        ordering = ["-score"]
+
+    def __str__(self):
+        return f"{self.user.username}@{self.season.slug}: {self.score}pts"

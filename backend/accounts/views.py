@@ -18,7 +18,10 @@ from .models import (
     ReadingList,
     ReadingListItem,
     ReadingProgress,
+    Season,
+    UserSeasonStats,
 )
+from .ranking import RANKS
 from .serializers import (
     FavoriteSerializer,
     ProfileSerializer,
@@ -26,6 +29,9 @@ from .serializers import (
     ReadingListItemSerializer,
     ReadingListSerializer,
     ReadingProgressSerializer,
+    SeasonSerializer,
+    UserRankSerializer,
+    _rank_payload,
 )
 
 
@@ -446,6 +452,105 @@ def push_test(request):
         {"delivered": delivered},
         status=status.HTTP_200_OK if delivered else status.HTTP_502_BAD_GATEWAY,
     )
+
+
+# ---------------------------------------------------------------------------
+# Ranking competitivo
+# ---------------------------------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def rank_me(request):
+    """Devolve o rank do user autenticado na season ativa.
+
+    Se o user nunca pontuou, retorna stats zerados (tier 0, score 0) com a
+    season ativa preenchida — UI desenha emblema base e mensagem.
+    """
+    season = Season.current()
+    if season is None:
+        return Response({"detail": "Nenhuma season ativa."}, status=503)
+
+    stats, _ = UserSeasonStats.objects.select_related("user", "user__profile").get_or_create(
+        user=request.user, season=season
+    )
+    return Response(
+        UserRankSerializer(stats, context={"request": request}).data
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def leaderboard(request):
+    """Top N (default 100) da season ativa, ordenado por score.
+
+    Query params:
+      - ``limit``: nº de entradas (1-200, default 100)
+      - ``season``: slug pra ver leaderboard de season passada
+    """
+    slug = request.query_params.get("season")
+    if slug:
+        season = Season.objects.filter(slug=slug).first()
+        if not season:
+            return Response({"detail": "Season não encontrada."}, status=404)
+    else:
+        season = Season.current()
+        if season is None:
+            return Response({"detail": "Nenhuma season ativa."}, status=503)
+
+    try:
+        limit = int(request.query_params.get("limit", "100"))
+    except ValueError:
+        limit = 100
+    limit = max(1, min(limit, 200))
+
+    qs = (
+        UserSeasonStats.objects.filter(season=season, score__gt=0)
+        .select_related("user", "user__profile")
+        .order_by("-score", "id")[:limit]
+    )
+    entries = UserRankSerializer(qs, many=True, context={"request": request}).data
+
+    me_stats = (
+        UserSeasonStats.objects.filter(user=request.user, season=season)
+        .select_related("user", "user__profile")
+        .first()
+    )
+    me = (
+        UserRankSerializer(me_stats, context={"request": request}).data
+        if me_stats
+        else None
+    )
+
+    return Response(
+        {
+            "season": SeasonSerializer(season).data,
+            "entries": entries,
+            "me": me,
+            "tiers": [_rank_payload(r.tier) for r in RANKS],
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def seasons_list(request):
+    """Lista todas as seasons (ativas e fechadas) com peak rank do user."""
+    seasons = Season.objects.all()
+    user_stats = {
+        s.season_id: s
+        for s in UserSeasonStats.objects.filter(user=request.user)
+    }
+    payload = []
+    for season in seasons:
+        stat = user_stats.get(season.id)
+        payload.append(
+            {
+                **SeasonSerializer(season).data,
+                "my_score": stat.score if stat else 0,
+                "my_peak_rank": _rank_payload(stat.peak_rank_tier) if stat else _rank_payload(0),
+                "my_final_rank": _rank_payload(stat.rank_tier) if stat else _rank_payload(0),
+            }
+        )
+    return Response(payload)
 
 
 @api_view(["GET"])

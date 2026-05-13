@@ -3,7 +3,16 @@ from rest_framework import serializers
 from employees.models import Manga
 from employees.serializers import MangaListSerializer
 
-from .models import Favorite, Profile, ReadingList, ReadingListItem, ReadingProgress
+from .models import (
+    Favorite,
+    Profile,
+    ReadingList,
+    ReadingListItem,
+    ReadingProgress,
+    Season,
+    UserSeasonStats,
+)
+from .ranking import RANK_BY_TIER
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -178,6 +187,57 @@ class ReadingListSerializer(serializers.ModelSerializer):
             "item_count",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class SeasonSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Season
+        fields = ["id", "slug", "name", "starts_at", "ends_at", "is_active"]
+
+
+def _rank_payload(tier: int) -> dict:
+    rank = RANK_BY_TIER.get(tier) or RANK_BY_TIER[0]
+    return {
+        "tier": rank.tier,
+        "slug": rank.slug,
+        "name": rank.name,
+        "emblem": f"/emblems/{rank.tier:02d}-{rank.slug}.png",
+    }
+
+
+class UserRankSerializer(serializers.ModelSerializer):
+    season = SeasonSerializer(read_only=True)
+    rank = serializers.SerializerMethodField()
+    peak_rank = serializers.SerializerMethodField()
+    username = serializers.CharField(source="user.username", read_only=True)
+    avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserSeasonStats
+        fields = [
+            "season",
+            "username",
+            "avatar",
+            "score",
+            "position",
+            "rank",
+            "peak_rank",
+            "computed_at",
+        ]
+
+    def get_rank(self, obj):
+        return _rank_payload(obj.rank_tier)
+
+    def get_peak_rank(self, obj):
+        return _rank_payload(obj.peak_rank_tier)
+
+    def get_avatar(self, obj):
+        profile = getattr(obj.user, "profile", None)
+        if profile and profile.avatar:
+            request = self.context.get("request")
+            url = profile.avatar.url
+            return request.build_absolute_uri(url) if request else url
+        return None
 
 
 class ReadingProgressSerializer(serializers.ModelSerializer):

@@ -1,7 +1,17 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Favorite, Profile, ReadingList, ReadingListItem, ReadingProgress
+from .models import (
+    Favorite,
+    Profile,
+    ReadingList,
+    ReadingListItem,
+    ReadingProgress,
+    ScoreEvent,
+    Season,
+    UserSeasonStats,
+)
+from .ranking import RANK_BY_TIER
 
 
 @admin.register(Profile)
@@ -85,3 +95,50 @@ class ReadingProgressAdmin(admin.ModelAdmin):
     list_filter = ("completed",)
     search_fields = ("user__username", "chapter__manga__title")
     raw_id_fields = ("user", "chapter")
+
+
+def _rank_name(tier: int) -> str:
+    r = RANK_BY_TIER.get(tier)
+    return r.name if r else f"tier {tier}"
+
+
+@admin.register(Season)
+class SeasonAdmin(admin.ModelAdmin):
+    list_display = ("slug", "name", "starts_at", "ends_at", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("slug", "name")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(ScoreEvent)
+class ScoreEventAdmin(admin.ModelAdmin):
+    list_display = ("user", "season", "kind", "ref_id", "points", "created_at")
+    list_filter = ("kind", "season")
+    search_fields = ("user__username",)
+    raw_id_fields = ("user", "season")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(UserSeasonStats)
+class UserSeasonStatsAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "season",
+        "score",
+        "position",
+        "rank_display",
+        "peak_rank_display",
+        "computed_at",
+    )
+    list_filter = ("season", "rank_tier")
+    search_fields = ("user__username",)
+    raw_id_fields = ("user", "season")
+    readonly_fields = ("created_at", "updated_at", "computed_at")
+
+    @admin.display(description="Rank")
+    def rank_display(self, obj):
+        return _rank_name(obj.rank_tier)
+
+    @admin.display(description="Peak rank")
+    def peak_rank_display(self, obj):
+        return _rank_name(obj.peak_rank_tier)
