@@ -12,9 +12,9 @@ export type RankPayload = {
   slug: string;
   name: string;
   emblem: string;
-  /** Limite superior do percentil (0-100) que pertence a esse tier.
-   *  Ex: 0.5 = top 0.5%. Sewer Rat tem 100 (resto). */
-  max_percentile: number;
+  /** Score mínimo pra entrar nesse tier (modelo threshold absoluto).
+   *  Sewer Rat = 0; Saburo's Hand = 75000. */
+  min_score: number;
 };
 
 export type SeasonPayload = {

@@ -27,32 +27,37 @@ class Rank:
     tier: int
     slug: str
     name: str
-    max_percentile: float  # incluído no tier se percentile <= max_percentile
+    # Score mínimo (inclusive) pra estar nesse tier. User com score >=
+    # min_score do tier N e < min_score do tier N+1 pertence ao tier N.
+    # Modelo absoluto (estilo Valorant Iron→Immortal): user solo consegue
+    # promover acumulando pontos, sem depender de outros agentes.
+    min_score: int
 
 
 RANKS: tuple[Rank, ...] = (
-    Rank(7, "saburos-hand", "Saburo's Hand", 0.5),
-    Rank(6, "director", "Director", 2.0),
-    Rank(5, "lieutenant", "Lieutenant", 7.0),
-    Rank(4, "solo", "Solo", 15.0),
-    Rank(3, "netrunner", "Netrunner", 30.0),
-    Rank(2, "fixer", "Fixer", 50.0),
-    Rank(1, "street-kid", "Street Kid", 80.0),
-    Rank(0, "sewer-rat", "Sewer Rat", 100.0),
+    Rank(7, "saburos-hand", "Saburo's Hand", 75_000),
+    Rank(6, "director", "Director", 25_000),
+    Rank(5, "lieutenant", "Lieutenant", 10_000),
+    Rank(4, "solo", "Solo", 3_500),
+    Rank(3, "netrunner", "Netrunner", 1_000),
+    Rank(2, "fixer", "Fixer", 250),
+    Rank(1, "street-kid", "Street Kid", 50),
+    Rank(0, "sewer-rat", "Sewer Rat", 0),
 )
 
 # Slug → Rank lookup
 RANK_BY_TIER: dict[int, Rank] = {r.tier: r for r in RANKS}
 
 
-def rank_for_percentile(percentile: float) -> Rank:
-    """Recebe percentil (0.0 = topo, 100.0 = fim) e devolve o Rank.
+def rank_for_score(score: int) -> Rank:
+    """Devolve o Rank do user dado seu score atual.
 
-    Iteração no sorted RANKS (top-down): primeiro tier cujo ``max_percentile``
-    cobre o percentil ganha.
+    Itera no sorted RANKS top-down: primeiro tier cujo ``min_score`` o
+    score satisfaz vence. Cresce monotonicamente — nunca regride com
+    pontuação maior.
     """
-    for r in RANKS:
-        if percentile <= r.max_percentile:
+    for r in RANKS:  # já vem do tier mais alto pro mais baixo
+        if score >= r.min_score:
             return r
     return RANK_BY_TIER[0]
 

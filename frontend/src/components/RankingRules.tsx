@@ -119,15 +119,15 @@ export default function RankingRules({ tiers }: { tiers: RankPayload[] }) {
           <Block
             label="02"
             title="HIERARQUIA"
-            kicker="// Tiers sao definidos por percentil global, nao por threshold fixo"
+            kicker="// Cada tier exige uma pontuacao minima absoluta"
           >
             <p
               className="mono text-[11px] mb-4"
               style={{ color: 'var(--fg-secondary)' }}
             >
-              Sua pontuacao define sua POSICAO no ranking global da season. A
-              posicao em percentil define o seu TIER. Quanto mais agentes
-              pontuando, mais competitivo fica subir.
+              Voce sobe acumulando pontos, independente de quantos agentes
+              estao competindo. A POSICAO no leaderboard ainda e disputada —
+              dentro do mesmo tier, quem leu mais lidera.
             </p>
             <div
               className="corners-sm overflow-hidden"
@@ -170,7 +170,9 @@ export default function RankingRules({ tiers }: { tiers: RankPayload[] }) {
                       className="mono text-xs font-bold"
                       style={{ color: 'var(--arasaka-red)' }}
                     >
-                      {formatPercentile(tier, orderedTiers, i)}
+                      {tier.min_score === 0
+                        ? 'INICIO'
+                        : `${tier.min_score.toLocaleString('pt-BR')}+ PTS`}
                     </p>
                   </div>
                 </div>
@@ -180,9 +182,8 @@ export default function RankingRules({ tiers }: { tiers: RankPayload[] }) {
               className="mono text-[10px] mt-3 uppercase tracking-widest"
               style={{ color: 'var(--fg-muted)' }}
             >
-              // Para subir, basta superar em pontos o agente que ocupa a
-              ultima posicao do tier acima. O HUD mostra exatamente quantos
-              pontos faltam.
+              // Saburo's Hand exige 75.000 pts — equivale a algo como 6 mil
+              capitulos lidos ou multiplas obras longas concluidas.
             </p>
           </Block>
 
@@ -222,22 +223,6 @@ export default function RankingRules({ tiers }: { tiers: RankPayload[] }) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function formatPercentile(
-  tier: RankPayload,
-  ordered: RankPayload[],
-  i: number,
-): string {
-  if (tier.max_percentile >= 100) return 'RESTANTE';
-  // Encontrar o tier IMEDIATAMENTE superior pra mostrar faixa "X% a Y%"
-  // ordered esta do mais alto pro mais baixo (i=0 = topo)
-  const prev = ordered[i - 1];
-  if (!prev) {
-    // top tier
-    return `TOP ${tier.max_percentile}%`;
-  }
-  return `${prev.max_percentile}% – ${tier.max_percentile}%`;
-}
-
 function Block({
   label,
   title,

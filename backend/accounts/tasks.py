@@ -16,21 +16,23 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import Season, UserSeasonStats
-from .ranking import SEASON_DURATION, rank_for_percentile
+from .ranking import SEASON_DURATION, rank_for_score
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task(name="accounts.recompute_ranks")
 def recompute_ranks() -> dict:
-    """Reordena UserSeasonStats da season ativa e reatribui rank/position.
+    """Atualiza position + tier persistido dos UserSeasonStats da season.
 
-    Algoritmo: ordena por -score, atribui position 1..N e calcula percentil
-    (position/total * 100). Tier vem de ``rank_for_percentile``. peak_rank
-    só sobe, nunca desce.
+    Algoritmo:
+      1. Ordena por -score → atribui position 1..N
+      2. Tier vem de ``rank_for_score(score)`` (threshold absoluto)
+      3. peak_rank só sobe, nunca desce
 
-    Custo: 1 SELECT + 1 bulk_update por season. Pra base com 100k users
-    fica em ~1s, mais que suficiente pra rodar diariamente.
+    Endpoints já calculam tier/position AO VIVO via ``rank_for_score`` e
+    contagem de scores maiores — esta task mantém o cache em sync e é a
+    fonte da verdade pra peak_rank no DB.
     """
     season = Season.current()
     if season is None:
@@ -49,8 +51,7 @@ def recompute_ranks() -> dict:
     to_update = []
     for idx, s in enumerate(stats):
         position = idx + 1
-        percentile = (position / total) * 100.0
-        rank = rank_for_percentile(percentile)
+        rank = rank_for_score(s.score)
         new_peak = max(s.peak_rank_tier, rank.tier)
         if (
             s.position != position

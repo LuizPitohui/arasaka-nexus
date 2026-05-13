@@ -460,48 +460,32 @@ def push_test(request):
 def _compute_live_position_and_tier(stats, season) -> tuple[int | None, int]:
     """Calcula posição e tier AO VIVO, sem esperar o recompute diário.
 
-    O recompute do beat só roda 1x/dia (04h) e atualiza ``position`` /
-    ``rank_tier`` no DB. Entre rodadas, esses campos ficam defasados — pior,
-    ficam ``null`` pra users que pontuaram pela primeira vez na janela.
-
-    Aqui contamos quantos users tem score MAIOR (= live position do user)
-    e derivamos o tier do percentil resultante. Custo: 2 queries simples
-    cobertas pelo index ``(season, -score)`` no UserSeasonStats.
+    Tier vem do SCORE absoluto (modelo threshold-based — user solo consegue
+    promover acumulando pontos, não depende de outros agentes). Position
+    vem da contagem de scores maiores na season (competição pela ordem
+    dentro do tier e no leaderboard global).
     """
+    from .ranking import rank_for_score
+
+    tier = rank_for_score(stats.score).tier
     if stats.score <= 0:
-        return None, 0
+        return None, tier
 
     higher = UserSeasonStats.objects.filter(
         season=season, score__gt=stats.score
     ).count()
-    live_position = higher + 1
-
-    total = UserSeasonStats.objects.filter(season=season, score__gt=0).count()
-    if total == 0:
-        return live_position, stats.rank_tier
-    percentile = (live_position / total) * 100.0
-    from .ranking import rank_for_percentile
-
-    return live_position, rank_for_percentile(percentile).tier
+    return higher + 1, tier
 
 
 def _compute_progress_to_next(stats, season, current_tier: int) -> dict | None:
-    """Calcula quanto falta pro próximo tier baseado no score do user que
-    está sentado na borda do percentil necessário.
+    """Calcula quanto falta pro próximo tier (threshold absoluto).
 
-    Como os tiers são percentile-based (não threshold fixo), "pontos pra
-    promover" depende da distribuição atual da season. Buscamos o user
-    cuja posição corresponde ao limite superior do próximo tier — superá-lo
-    em score é suficiente pra subir no próximo recompute.
-
-    ``current_tier`` é passado explicitamente (live tier, não persistido)
-    pra que progress reflita o estado real, não o cache do recompute.
+    Tiers são definidos por ``min_score`` em ``ranking.RANKS`` — progress
+    é a fração do score atual dentro da janela ``[current.min, next.min)``.
 
     Devolve None se o user já está no tier máximo.
     """
-    import math
-
-    from .ranking import RANKS as _RANKS
+    from .ranking import RANK_BY_TIER, RANKS as _RANKS
 
     next_tier = next(
         (r for r in sorted(_RANKS, key=lambda x: x.tier) if r.tier > current_tier),
@@ -510,33 +494,15 @@ def _compute_progress_to_next(stats, season, current_tier: int) -> dict | None:
     if next_tier is None:
         return None
 
-    qs = (
-        UserSeasonStats.objects.filter(season=season, score__gt=0)
-        .order_by("-score", "id")
-        .values_list("score", flat=True)
-    )
-    total = qs.count()
-    if total == 0:
-        return {
-            "next_rank": _rank_payload(next_tier.tier),
-            "threshold_score": 0,
-            "points_to_next": 0,
-            "percent": 0,
-        }
-
-    # Maior posição (1-based) que ainda pertence ao next_tier.
-    boundary_pos = max(1, math.ceil(total * next_tier.max_percentile / 100.0))
-    boundary_score_slice = list(qs[boundary_pos - 1 : boundary_pos])
-    threshold = boundary_score_slice[0] if boundary_score_slice else 0
-    points_to_next = max(0, threshold - stats.score + 1)
-    if threshold > 0:
-        percent = min(100, int(round((stats.score / threshold) * 100)))
-    else:
-        percent = 100 if stats.score > 0 else 0
+    current_min = RANK_BY_TIER[current_tier].min_score
+    span = max(1, next_tier.min_score - current_min)
+    within = max(0, stats.score - current_min)
+    percent = min(100, int(round((within / span) * 100)))
+    points_to_next = max(0, next_tier.min_score - stats.score)
 
     return {
         "next_rank": _rank_payload(next_tier.tier),
-        "threshold_score": threshold,
+        "threshold_score": next_tier.min_score,
         "points_to_next": points_to_next,
         "percent": percent,
     }
@@ -622,18 +588,14 @@ def leaderboard(request):
         .order_by("-score", "id")[:limit]
     )
     entries = UserRankSerializer(qs, many=True, context={"request": request}).data
-    # Override position pra refletir o ranking ao vivo (qs ja vem ordenado
-    # por -score), em vez do snapshot do ultimo recompute. Idem pro tier:
-    # recalcula via percentil sobre o total de agentes pontuando.
+    # Override position pra refletir ranking ao vivo (qs ja vem ordenado por
+    # -score). Tier vem do score absoluto via rank_for_score.
+    from .ranking import rank_for_score
+
     total_agents = _total_agents(season)
     for i, entry in enumerate(entries):
-        live_pos = i + 1
-        entry["position"] = live_pos
-        if total_agents > 0:
-            from .ranking import rank_for_percentile
-
-            pct = (live_pos / total_agents) * 100.0
-            entry["rank"] = _rank_payload(rank_for_percentile(pct).tier)
+        entry["position"] = i + 1
+        entry["rank"] = _rank_payload(rank_for_score(entry["score"]).tier)
 
     me_stats = (
         UserSeasonStats.objects.filter(user=request.user, season=season)
