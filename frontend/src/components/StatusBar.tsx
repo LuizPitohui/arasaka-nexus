@@ -61,10 +61,14 @@ export function StatusBar() {
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT_MS);
+        // credentials: 'include' deixa o cookie cf_clearance viajar — sem
+        // ele a Cloudflare Bot Management trata como request automatizada
+        // e devolve 403 + JS challenge (NET_DOWN falso). O endpoint nao
+        // exige auth, mas os cookies sao necessarios pra passar pelo WAF.
         const res = await fetch(`${API_URL}/ping/`, {
           method: 'GET',
           cache: 'no-store',
-          credentials: 'omit',
+          credentials: 'include',
           signal: ctrl.signal,
         });
         clearTimeout(timer);
