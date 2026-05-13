@@ -337,6 +337,75 @@ def task_refresh_popular():
         redis_client.delete(lock_key)
 
 
+@shared_task(name="employees.scheduled_catalog_expand")
+def task_catalog_expand():
+    """Weekly: paginate top-N popular MangaDex catalog (pt-br/en) e enqueue
+    imports pros mangas que ainda nao estao no DB.
+
+    Equivalente a rodar ``python manage.py seed_popular --max 5000``
+    automaticamente. Cap em 5k mantem o catalogo crescendo sem encher o
+    DB demais. Idempotente: pula mangas ja presentes.
+
+    Rate-limit ware: usa o MangaDexClient centralizado. Cada batch de 100
+    leva ~200ms, com 0.5s sleep entre paginas. 50 paginas = ~35s pra
+    paginar; os imports rodam em background no worker.
+    """
+    redis_client = _redis_for_locks()
+    lock_key = "lock:scheduled_catalog_expand"
+    if not redis_client.set(lock_key, "1", nx=True, ex=3 * 3600):
+        logger.info("catalog_expand já em execução; ignorando run")
+        return {"status": "skipped"}
+    try:
+        import time as _time
+
+        from .services import MangaDexScanner as _Scanner
+
+        client = _Scanner().client
+        max_n = 5000
+        page_size = 100
+        offset = 0
+        dispatched = 0
+        already = 0
+        while offset < max_n and offset < 9900:
+            page_limit = min(page_size, max_n - offset)
+            params = {
+                "limit": page_limit,
+                "offset": offset,
+                "includes[]": "cover_art",
+                "availableTranslatedLanguage[]": ["pt-br", "en"],
+                "contentRating[]": ["safe", "suggestive"],
+                "hasAvailableChapters": "true",
+                "order[followedCount]": "desc",
+            }
+            try:
+                payload = client.list_manga(**params)
+            except Exception as exc:
+                logger.warning("catalog_expand falhou no offset %s: %s", offset, exc)
+                break
+            items = payload.get("data", []) or []
+            if not items:
+                break
+            ids = [m.get("id") for m in items if m.get("id")]
+            existing = set(
+                Manga.objects.filter(mangadex_id__in=ids).values_list(
+                    "mangadex_id", flat=True
+                )
+            )
+            for mid in ids:
+                if mid in existing:
+                    already += 1
+                    continue
+                task_import_manga_chapters.delay(mid)
+                dispatched += 1
+            offset += len(items)
+            if len(items) < page_limit:
+                break
+            _time.sleep(0.5)
+        return {"status": "ok", "dispatched": dispatched, "already": already}
+    finally:
+        redis_client.delete(lock_key)
+
+
 @shared_task(name="employees.scheduled_sync_followed_feeds")
 def task_sync_followed_feeds():
     """Every 6h: refresh chapter feed for mangás that users care about.

@@ -232,6 +232,13 @@ CELERY_BEAT_SCHEDULE = {
         # pra mandar so pros users daquela hora local.
         "schedule": crontab(minute=5),
     },
+    "catalog-expand-weekly": {
+        "task": "employees.scheduled_catalog_expand",
+        # Domingo 05:00 — pega top 5000 populares atualizados e enfileira
+        # imports pros que faltam. Roda 1x/semana pra nao estressar a API
+        # da MangaDex (tasks Celery levam horas em fila).
+        "schedule": crontab(minute=0, hour=5, day_of_week=0),
+    },
     "ranking-recompute": {
         "task": "accounts.recompute_ranks",
         # Diariamente 04:00 BRT — depois dos cleanups (03:30 / 04:30 ficam
