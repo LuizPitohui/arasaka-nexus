@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { api } from '@/lib/api';
+import { APP_VERSION, GITHUB_LATEST_RELEASE_URL } from '@/lib/version';
 
 type Contact = {
   contact_email: string;
@@ -109,7 +110,23 @@ export function Footer() {
           className="mono text-[10px] uppercase tracking-widest"
           style={{ color: 'var(--fg-muted)' }}
         >
-          v1.0 · BUILT_WITH_NEON
+          <a
+            href={GITHUB_LATEST_RELEASE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition-colors"
+            style={{ color: 'var(--fg-muted)' }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.color = 'var(--arasaka-red)')
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.color = 'var(--fg-muted)')
+            }
+            title="Ver releases no GitHub"
+          >
+            v{APP_VERSION}
+          </a>{' '}
+          · BUILT_WITH_NEON
         </p>
       </div>
     </footer>

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Download, Shield, Smartphone, AlertTriangle } from 'lucide-react';
+import { Download, Github, Shield, Smartphone, AlertTriangle, ExternalLink } from 'lucide-react';
+
+import { APP_VERSION, GITHUB_LATEST_RELEASE_URL, GITHUB_RELEASES_URL } from '@/lib/version';
 
 export const metadata: Metadata = {
   title: 'App Android',
@@ -11,22 +13,24 @@ export const metadata: Metadata = {
 /**
  * Página de download do APK Android (TWA wrapper da PWA).
  *
- * O APK em si NAO mora no repo (binario grande, alterado a cada release).
- * Subir cada build em GitHub Releases e atualizar APK_URL abaixo.
+ * Antes: APK servido direto do nosso nginx (volume bind ./downloads/) —
+ *   problema: APK ficava obsoleto rapido conforme o projeto evoluia, e
+ *   o operador tinha que lembrar de copiar build novo no servidor a cada
+ *   release. Resultado: usuarios baixando version antiga sem perceber.
  *
- * Estrategia de distribuicao:
- *   1. Build local com Bubblewrap (ver twa/README.md)
- *   2. Upload do APK assinado em github.com/.../releases
- *   3. Trocar APK_URL aqui pra apontar pra release mais recente
- *   4. (Opcional) automatizar: workflow que faz release a cada tag.
+ * Agora: pagina linka pro GitHub Releases /releases/latest. GitHub
+ * automatico redireciona pra tag mais recente — quem baixa pega sempre
+ * o APK mais novo, sem cache local stale.
+ *
+ * Pipeline de release (manual ou via GitHub Actions):
+ *   1. Build local Bubblewrap: cd twa && ./gradlew assembleRelease
+ *   2. Signar: jarsigner -keystore ... app-release.apk
+ *   3. Tag + push: git tag vX.Y && git push origin vX.Y
+ *   4. Criar release no GitHub: gh release create vX.Y twa/app-release-signed.apk
+ *   5. Upar mesma versao em package.json (footer + esta pagina viram pra X.Y
+ *      automatico ao redeploy)
  */
 
-// APK servido direto do nosso nginx (volume bind ./downloads/).
-// Pra subir versao nova: scp twa/app-release-signed.apk arasaka:~/arasaka-nexus/downloads/nexus.apk
-// Cache nginx 5min — usuarios pegam atualizacao quase imediato.
-const APK_URL = 'https://nexus.arasaka.fun/downloads/nexus.apk';
-const APK_VERSION = '1.0.0';
-const APK_SIZE = '~1.2 MB';
 const MIN_ANDROID = '6.0 (API 23)';
 
 export default function AppDownloadPage() {
@@ -53,12 +57,13 @@ export default function AppDownloadPage() {
             className="mono text-sm max-w-xl mx-auto"
             style={{ color: 'var(--fg-muted)' }}
           >
-            Distribuição direta. Sem Play Store. Sem coleta extra. O app é o
-            mesmo site rodando em modo standalone — instalação manual via APK.
+            Distribuição direta via GitHub Releases. Sempre a versão mais
+            recente. Sem Play Store, sem coleta extra. O app é o mesmo site
+            rodando em modo standalone — instalação manual via APK.
           </p>
         </div>
 
-        {/* Download principal */}
+        {/* Download principal — aponta pra GitHub Releases */}
         <div
           className="p-8 mb-8"
           style={{
@@ -73,24 +78,33 @@ export default function AppDownloadPage() {
                 className="kicker mb-2"
                 style={{ color: 'var(--neon-cyan)' }}
               >
-                LATEST_BUILD
+                LATEST_RELEASE
               </p>
               <p
                 className="mono text-2xl mb-1"
                 style={{ color: 'var(--fg-primary)' }}
               >
-                v{APK_VERSION}
+                <a
+                  href={GITHUB_LATEST_RELEASE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-[var(--arasaka-red)] transition-colors"
+                  style={{ color: 'var(--fg-primary)' }}
+                >
+                  v{APP_VERSION}
+                </a>
               </p>
               <p
                 className="mono text-xs uppercase tracking-widest"
                 style={{ color: 'var(--fg-muted)' }}
               >
-                {APK_SIZE} · Android {MIN_ANDROID}+ · arm64 / arm / x86
+                Android {MIN_ANDROID}+ · arm64 / arm / x86 · servido por GitHub
               </p>
             </div>
             <a
-              href={APK_URL}
-              download="nexus.apk"
+              href={GITHUB_LATEST_RELEASE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-3 py-4 px-6 mono text-sm uppercase tracking-[0.3em] transition-all"
               style={{
                 background: 'var(--arasaka-red)',
@@ -99,9 +113,42 @@ export default function AppDownloadPage() {
                 boxShadow: 'var(--glow-red)',
               }}
             >
-              <Download size={18} />
-              BAIXAR APK
+              <Github size={18} />
+              ABRIR RELEASES
+              <ExternalLink size={14} />
             </a>
+          </div>
+        </div>
+
+        {/* Aviso sobre versionamento */}
+        <div
+          className="p-5 mb-8 flex gap-4 items-start"
+          style={{
+            background: 'rgba(34,211,238,0.06)',
+            border: '1px solid var(--border-faint)',
+          }}
+        >
+          <Smartphone
+            size={20}
+            style={{ color: 'var(--neon-cyan)', flexShrink: 0, marginTop: 2 }}
+          />
+          <div>
+            <p
+              className="kicker mb-2"
+              style={{ color: 'var(--neon-cyan)' }}
+            >
+              SEMPRE_ATUALIZADO
+            </p>
+            <p
+              className="mono text-xs leading-relaxed"
+              style={{ color: 'var(--fg-secondary)' }}
+            >
+              O link <code className="mono">/releases/latest</code> do GitHub
+              redireciona automaticamente pra tag mais recente publicada. Nenhum
+              cache local pra ficar obsoleto. A versão atual ({' '}
+              <span style={{ color: 'var(--fg-primary)' }}>v{APP_VERSION}</span>{' '}
+              ) corresponde ao código em produção agora.
+            </p>
           </div>
         </div>
 
@@ -130,9 +177,8 @@ export default function AppDownloadPage() {
             >
               Android vai pedir permissão pra instalar de "fonte desconhecida".
               É normal — o app não passa pela Play Store por escolha nossa, não
-              por estar quebrado. Se quiser garantir que o APK é o oficial,
-              compare o SHA-256 publicado na página da release com o que você
-              baixou (instruções abaixo).
+              por estar quebrado. O SHA-256 do APK fica publicado na página da
+              release pra você conferir integridade.
             </p>
           </div>
         </div>
@@ -154,9 +200,9 @@ export default function AppDownloadPage() {
           <ol className="space-y-5">
             <Step
               n={1}
-              icon={<Download size={18} />}
-              title="Baixar o APK"
-              body="Clique em BAIXAR APK acima. O Chrome vai avisar 'arquivo pode ser perigoso' — aceita (é arquivo de instalador)."
+              icon={<Github size={18} />}
+              title="Abrir a release no GitHub"
+              body="Clique em ABRIR RELEASES acima. Na página da release mais recente, baixa o asset terminado em .apk."
             />
             <Step
               n={2}
@@ -177,18 +223,18 @@ export default function AppDownloadPage() {
               n={3}
               icon={<Shield size={18} />}
               title="Abrir o APK"
-              body="Toca no nexus.apk em Downloads. Aceita os prompts. Em ~5s o app aparece na home."
+              body="Toca no arquivo baixado em Downloads. Aceita os prompts. Em ~5s o app aparece na home."
             />
             <Step
               n={4}
-              icon={<Smartphone size={18} />}
-              title="Pronto"
-              body="Login, leitor, biblioteca — tudo igual ao site, sem barra de URL. Atualizações automáticas (refresh do conteúdo) chegam sempre que abrir conectado."
+              icon={<Download size={18} />}
+              title="Atualizações futuras"
+              body="O conteúdo (mangas, layouts, fixes) atualiza sozinho — o app é uma janela pro site. Só re-baixe quando subirmos uma versão com mudança de permissão / icon / estrutura (raro)."
             />
           </ol>
         </div>
 
-        {/* Atualizacoes futuras */}
+        {/* Link pra historico de releases */}
         <div
           className="p-6 mb-8"
           style={{
@@ -200,18 +246,30 @@ export default function AppDownloadPage() {
             className="kicker mb-3"
             style={{ color: 'var(--fg-muted)' }}
           >
-            // FUTURE_UPDATES
+            // CHANGELOG
           </p>
           <p
-            className="mono text-xs leading-relaxed"
+            className="mono text-xs leading-relaxed mb-3"
             style={{ color: 'var(--fg-secondary)' }}
           >
-            O conteúdo do app (layout, novos mangás, fixes) atualiza sozinho —
-            o app é uma janela pro site. Só a "casca" Android (este APK
-            específico) precisa ser baixada de novo quando subirmos uma versão
-            com mudança de permissões / icon / estrutura. Vamos avisar dentro
-            do próprio app quando isso acontecer.
+            Curioso sobre o que mudou? Cada release no GitHub vem com notas do
+            que entrou (bugfixes, novas fontes, melhorias de UI).
           </p>
+          <a
+            href={GITHUB_RELEASES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 py-2 px-4 mono text-xs uppercase tracking-[0.3em] transition-colors"
+            style={{
+              background: 'transparent',
+              color: 'var(--fg-primary)',
+              border: '1px solid var(--border-mid)',
+            }}
+          >
+            <Github size={14} />
+            VER HISTORICO
+            <ExternalLink size={12} />
+          </a>
         </div>
 
         {/* Alternativa PWA */}
