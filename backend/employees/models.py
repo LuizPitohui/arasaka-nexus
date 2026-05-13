@@ -102,24 +102,47 @@ class Manga(models.Model):
 
     @property
     def cover_url(self) -> str:
-        """Effective cover URL: local mirror if available, else upstream.
+        """Effective cover URL — sempre passa pelo nosso dominio.
 
-        Safety net: covers internas do Suwayomi (rede docker) que vazaram
-        do import sem normalizacao sao reescritas pra ir pelo proxy
-        publico ``/api/cdn/mihon-cover/<external_id>/`` — sem essa
-        traducao, o browser bateria em ``http://suwayomi:4567/...`` e
-        falharia (host nao roteavel) entrando em loop de retry no <img>.
+        Ordem de resolucao:
+          1. Local mirror (cover_path setado por task_mirror_covers) — best
+             case, MEDIA_URL servido pelo nosso nginx
+          2. Mihon/Suwayomi interna (URL `suwayomi:4567`) → routeia via
+             /api/cdn/mihon-cover/<external_id>/
+          3. Qualquer URL HTTPS upstream (uploads.mangadex.org etc) →
+             routeia via /api/cdn/preview/?u=<encoded> pra:
+               - evitar bloqueio por adblock/extensoes (mesma origem)
+               - aproveitar cache da Cloudflare 24h (vs hotlink ao CDN)
+               - escapar do `<img>` infinite retry loop quando host responde
+                 diferente em browsers especificos
+          4. Vazio (sem cover algum) → string vazia (frontend cai pro
+             placeholder.jpg local).
+
+        Side-effect: backend serve 1 request por cover ate' o mirror
+        download local rodar (task periodica de 30min, 100/run). Cloudflare
+        cacheia a partir do 1o hit. Carga insignificante (5 workers gthread).
         """
         if self.cover_path:
             from django.conf import settings as dj_settings
 
             base = (dj_settings.MEDIA_URL or "/media/").rstrip("/")
             return f"{base}/{self.cover_path}"
+
         cover = self.cover or ""
+
+        # Mihon/Suwayomi interno
         if "/api/v1/manga/" in cover and "/thumbnail" in cover:
             if self.mangadex_id and self.mangadex_id.startswith("mihon:"):
                 external_id = self.mangadex_id[len("mihon:"):]
                 return f"/api/cdn/mihon-cover/{external_id}/"
+
+        # URL upstream HTTPS — passa pelo nosso proxy. Mesma origem +
+        # cacheamento CF + zero bloqueio cliente.
+        if cover.startswith("https://") or cover.startswith("http://"):
+            from urllib.parse import quote
+
+            return f"/api/cdn/preview/?u={quote(cover, safe='')}"
+
         return cover
 
 
