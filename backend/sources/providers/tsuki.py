@@ -54,6 +54,10 @@ class TsukiSource(BaseSource):
     base_url = "https://tsuki-mangas.com"
     languages = ["pt-br"]
     kind = "api"
+    # FlareSolverr resolve o JS challenge agressivo que redireciona
+    # requests automatizados pra netun-oum (ad-fraud). Sem isso, o
+    # provider sempre devolve [] e o health check sinaliza parser_drift.
+    USE_FLARESOLVERR = True
 
     API_BASE = "https://tsuki-mangas.com/api/v2"
     CDN_BASE = "https://cdn.tsuki-mangas.com"
@@ -63,6 +67,7 @@ class TsukiSource(BaseSource):
             source_id=self.id,
             base_url=self.API_BASE,
             user_agent=TSUKI_UA,
+            use_flaresolverr=self.USE_FLARESOLVERR,
             default_headers={
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
@@ -70,7 +75,10 @@ class TsukiSource(BaseSource):
                 "Referer": self.base_url + "/",
             },
         )
-        # Cookie/sessao do JS challenge — populado on demand
+        # Cookie/sessao do JS challenge — fallback quando FlareSolverr nao
+        # esta disponivel (FLARESOLVERR_URL nao setado). Hoje o anti-bot
+        # do Tsuki nao resolve so com cookie dance, mas mantemos o handler
+        # pra graceful degrade.
         self._challenge_passed = False
 
     def _solve_challenge(self, html: str) -> bool:
@@ -96,13 +104,45 @@ class TsukiSource(BaseSource):
 
     def _get_json(self, path: str, *, endpoint: str, params: dict | None = None,
                   record_telemetry: bool = True) -> dict | list:
-        """GET wrapper que resolve o JS challenge se a primeira resposta nao
-        for JSON. Retry uma vez. Devolve {} (ou []) em falha permanente.
+        """GET wrapper resiliente ao anti-bot do Tsuki.
 
-        Necessario porque o Tsuki responde HTML 200 OK (challenge) em vez
-        de JSON quando a sessao nao tem cookie valido — ``response.json()``
-        lancaria ValueError sem essa camada.
+        Tenta parse JSON do response.text mesmo sem content-type=json
+        (FlareSolverr captura o body com o Chrome — devolve HTML wrappado
+        do JSON tipo ``<html><body><pre>{"data":[...]}</pre>...``). A
+        gente extrai o JSON do meio se necessario.
+
+        Fallback: se nao for JSON, tenta resolver o challenge classico via
+        cookie dance e re-pede uma vez.
         """
+        import json as _json
+        import re as _re
+
+        def _try_parse(text: str):
+            if not text:
+                return None
+            # 1. Tenta parse direto
+            try:
+                return _json.loads(text)
+            except (ValueError, TypeError):
+                pass
+            # 2. FlareSolverr wrappa em <html>...<pre>JSON</pre>... — extrai
+            m = _re.search(r"<pre[^>]*>(.*?)</pre>", text, _re.DOTALL)
+            if m:
+                try:
+                    return _json.loads(m.group(1).strip())
+                except (ValueError, TypeError):
+                    pass
+            # 3. Tenta substring entre primeiro { e ultimo } (ou [ ])
+            for open_ch, close_ch in (("{", "}"), ("[", "]")):
+                start = text.find(open_ch)
+                end = text.rfind(close_ch)
+                if 0 <= start < end:
+                    try:
+                        return _json.loads(text[start : end + 1])
+                    except (ValueError, TypeError):
+                        continue
+            return None
+
         for attempt in range(2):
             try:
                 resp = self.client.get(
@@ -111,13 +151,10 @@ class TsukiSource(BaseSource):
                 )
             except SourceHTTPError:
                 return {}
-            ct = (resp.headers.get("content-type") or "").lower()
-            if "application/json" in ct or "json" in ct:
-                try:
-                    return resp.json()
-                except ValueError:
-                    return {}
-            # Resposta nao-JSON: tenta resolver challenge e re-pedir
+            parsed = _try_parse(resp.text)
+            if parsed is not None:
+                return parsed
+            # Body nao-JSON: tenta challenge dance e re-pede uma vez
             if attempt == 0 and self._solve_challenge(resp.text):
                 continue
             return {}
