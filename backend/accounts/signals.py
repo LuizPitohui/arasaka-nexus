@@ -8,6 +8,7 @@ from .models import Profile, ReadingProgress, ScoreEvent, Season, UserSeasonStat
 from .ranking import (
     POINTS_CHAPTER,
     POINTS_WORK_BONUS_PER_CHAPTER,
+    rank_for_score,
     reading_time_points,
 )
 
@@ -166,3 +167,67 @@ def award_score_on_completion(sender, instance: ReadingProgress, **kwargs):
             UserSeasonStats.objects.filter(pk=stats.pk).update(
                 score=F("score") + delta
             )
+            # ----------------------------------------------------------
+            # Promocao de tier: detecta cruzamento de threshold e dispara
+            # push notification + atualiza peak_rank_tier.
+            # ----------------------------------------------------------
+            new_score = stats.score + delta
+            new_tier = rank_for_score(new_score).tier
+            if new_tier > stats.peak_rank_tier:
+                # Persiste o novo peak antes de notificar — se o push
+                # falhar, idempotencia ainda evita re-disparo (compara com
+                # peak_rank_tier ja atualizado).
+                UserSeasonStats.objects.filter(pk=stats.pk).update(
+                    peak_rank_tier=new_tier,
+                    rank_tier=new_tier,
+                )
+                # Notificacao fora do bloco transaction.atomic (evita
+                # serializar I/O remoto dentro do lock). Captura erros pra
+                # nao quebrar o award se push falhar.
+                _send_promotion_push.delay_after_commit(
+                    user_id=instance.user_id,
+                    tier=new_tier,
+                )
+
+
+class _PromotionPushDispatch:
+    """Helper pra disparar push ASSIM QUE a transacao commitar.
+
+    Sem isso, send_to_user pode rodar antes do COMMIT do UPDATE de stats
+    — outras requests veriam estado inconsistente. ``transaction.on_commit``
+    encera o callback no commit final do outer transaction.
+    """
+
+    @staticmethod
+    def delay_after_commit(*, user_id: int, tier: int):
+        from django.contrib.auth import get_user_model
+        from django.db import transaction as _txn
+
+        from .push import is_configured, send_to_user
+        from .ranking import RANK_BY_TIER
+
+        def _do():
+            if not is_configured():
+                return
+            try:
+                user = get_user_model().objects.get(pk=user_id)
+            except get_user_model().DoesNotExist:
+                return
+            rank = RANK_BY_TIER.get(tier)
+            if not rank:
+                return
+            try:
+                send_to_user(
+                    user,
+                    title=f"PROMOCAO // {rank.name.upper()}",
+                    body=f"Voce alcancou o tier {rank.name}. Conferir ranking?",
+                    url="/leaderboard",
+                    tag=f"rank-promo-{rank.tier}",
+                )
+            except Exception:
+                pass  # nao quebra signal por erro de push
+
+        _txn.on_commit(_do)
+
+
+_send_promotion_push = _PromotionPushDispatch()

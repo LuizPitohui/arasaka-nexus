@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ChevronRight, Trophy } from 'lucide-react';
+import { ChevronRight, Info, Trophy } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import {
@@ -195,11 +195,34 @@ export default function RankCard() {
 
         {/* Breakdown chips */}
         {data.breakdown && (data.breakdown.chapter || data.breakdown.work_complete || data.breakdown.reading_time) ? (
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            <BreakdownChip label="CAPS" value={data.breakdown.chapter} />
-            <BreakdownChip label="OBRAS" value={data.breakdown.work_complete} />
-            <BreakdownChip label="TEMPO" value={data.breakdown.reading_time} />
-          </div>
+          <>
+            <div className="mt-5 flex items-center justify-between">
+              <p
+                className="mono text-[10px] uppercase tracking-widest flex items-center gap-1.5"
+                style={{ color: 'var(--fg-muted)' }}
+              >
+                <Info className="w-3 h-3" style={{ color: 'var(--neon-cyan)' }} />
+                // PASSE_O_MOUSE_PARA_DETALHES
+              </p>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <BreakdownChip
+                label="CAPS"
+                value={data.breakdown.chapter}
+                hint="10 pts por capitulo lido. Marca automaticamente ao terminar o reader, ou via 'marcar como lido' na lista."
+              />
+              <BreakdownChip
+                label="OBRAS"
+                value={data.breakdown.work_complete}
+                hint="Bonus de 5 × numero de caps ao completar uma obra inteira. Paga uma vez por obra na season."
+              />
+              <BreakdownChip
+                label="TEMPO"
+                value={data.breakdown.reading_time}
+                hint="1 ponto a cada 5 minutos lidos por capitulo. Cap em 30 min por capitulo (evita abas esquecidas)."
+              />
+            </div>
+          </>
         ) : null}
       </div>
 
@@ -270,13 +293,28 @@ function ProgressBar({ percent, maxed }: { percent: number; maxed: boolean }) {
   );
 }
 
-function BreakdownChip({ label, value }: { label: string; value: number }) {
+function BreakdownChip({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+}) {
   return (
     <div
-      className="corners-sm p-2 text-center"
+      className="corners-sm p-2 text-center cursor-help transition-colors"
+      title={hint}
       style={{
         background: 'var(--bg-base)',
         border: '1px solid var(--border-faint)',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--neon-cyan)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'var(--border-faint)';
       }}
     >
       <div

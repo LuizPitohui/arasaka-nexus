@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Clock, Crown, Flame, Hourglass, Layers, Trophy } from 'lucide-react';
 
 import Loader from '@/components/Loader';
@@ -27,7 +27,26 @@ import {
  *  5. LEADERBOARD — lista paginada com row stagger animation
  */
 export default function LeaderboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+          <Loader fullscreen label="LOADING" caption="// LEADERBOARD_TERMINAL" />
+        </div>
+      }
+    >
+      <LeaderboardContent />
+    </Suspense>
+  );
+}
+
+function LeaderboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // ?season=<slug> permite navegar pra leaderboard de uma season passada.
+  // Sem o param, backend escolhe a ativa.
+  const seasonSlug = searchParams.get('season') || undefined;
+
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,17 +56,21 @@ export default function LeaderboardPage() {
       router.replace('/login?next=/leaderboard');
       return;
     }
-    fetchLeaderboard({ limit: 100 })
+    fetchLeaderboard({ limit: 100, season: seasonSlug })
       .then(setData)
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
           router.replace('/login?next=/leaderboard');
           return;
         }
+        if (err instanceof ApiError && err.status === 404) {
+          setError('Season nao encontrada');
+          return;
+        }
         setError('Falha ao carregar leaderboard.');
       })
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [router, seasonSlug]);
 
   if (loading) {
     return (
@@ -234,13 +257,22 @@ function PageHeader({
             </div>
           </div>
         </div>
-        <a
-          href="#protocolo"
-          className="relative mt-4 inline-flex items-center gap-1.5 mono text-[10px] uppercase tracking-widest transition-colors hover:text-[var(--neon-cyan)]"
-          style={{ color: 'var(--fg-muted)' }}
-        >
-          // COMO_FUNCIONA_O_RANKING ↓
-        </a>
+        <div className="relative mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <a
+            href="#protocolo"
+            className="inline-flex items-center gap-1.5 mono text-[10px] uppercase tracking-widest transition-colors hover:text-[var(--neon-cyan)]"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // COMO_FUNCIONA_O_RANKING ↓
+          </a>
+          <a
+            href="/seasons"
+            className="inline-flex items-center gap-1.5 mono text-[10px] uppercase tracking-widest transition-colors hover:text-[var(--arasaka-red)]"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // HISTORICO_DE_SEASONS →
+          </a>
+        </div>
       </div>
     </header>
   );
