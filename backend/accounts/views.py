@@ -96,6 +96,58 @@ def profile_avatar(request):
 # ---------------------------------------------------------------------------
 # Work-aware helpers
 # ---------------------------------------------------------------------------
+def _upsert_progress_with_sibling_propagation(
+    *, user, chapter_id, completed: bool, page_number: int = 0
+):
+    """Upsert ReadingProgress(user, chapter) e propaga ``completed`` pra
+    chapter "irmaos" — capitulos em variantes do mesmo Work com o mesmo
+    chapter.number.
+
+    Retorna a ReadingProgress da chapter principal (a do request).
+    Devolve None se o chapter_id nao existe.
+
+    A propagacao protege contra duplo-credito de pontos: a signal
+    award_score_on_completion checa work-level dedup, entao saves nos
+    irmaos nao geram ScoreEvents extras.
+    """
+    from employees.models import Chapter
+
+    chapter = (
+        Chapter.objects.filter(id=chapter_id)
+        .values("id", "manga_id", "manga__work_id", "number")
+        .first()
+    )
+    if not chapter:
+        return None
+
+    work_id = chapter["manga__work_id"]
+    chapter_number = chapter["number"]
+
+    progress, _ = ReadingProgress.objects.update_or_create(
+        user=user,
+        chapter_id=chapter_id,
+        defaults={"page_number": page_number, "completed": completed},
+    )
+
+    if work_id:
+        # Encontra siblings (mesmo Work, mesmo number, exclui self)
+        sibling_ids = list(
+            Chapter.objects.filter(
+                manga__work_id=work_id, number=chapter_number
+            )
+            .exclude(id=chapter_id)
+            .values_list("id", flat=True)
+        )
+        for sid in sibling_ids:
+            ReadingProgress.objects.update_or_create(
+                user=user,
+                chapter_id=sid,
+                defaults={"completed": completed},
+            )
+
+    return progress
+
+
 def _work_sibling_manga_ids(manga_id) -> list[int]:
     """Devolve IDs de TODAS as variantes do Work do ``manga_id``.
 
@@ -322,12 +374,10 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="bulk")
     def bulk_set(self, request):
-        """Marca/desmarca vários capítulos de uma vez.
+        """Marca/desmarca vários capítulos de uma vez. Propaga pra
+        variantes do mesmo Work como o ``create()`` faz.
 
         Body: ``{"chapter_ids": [1,2,3], "completed": true}``
-
-        Útil pra ações tipo "marcar todos os anteriores como lidos" sem
-        precisar de N requests separados.
         """
         chapter_ids = request.data.get("chapter_ids") or []
         completed = bool(request.data.get("completed", True))
@@ -347,16 +397,18 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
         for cid in chapter_ids:
             if cid not in valid_ids:
                 continue
-            progress, _ = ReadingProgress.objects.update_or_create(
-                user=request.user,
-                chapter_id=cid,
-                defaults={"completed": completed},
+            progress = _upsert_progress_with_sibling_propagation(
+                user=request.user, chapter_id=cid, completed=completed
             )
-            results.append(progress.id)
+            if progress:
+                results.append(progress.id)
         return Response({"updated": len(results)}, status=200)
 
     def create(self, request, *args, **kwargs):
-        """Upsert by (user, chapter)."""
+        """Upsert by (user, chapter). Propaga ``completed`` pra todos os
+        capitulos "irmaos" (mesmo Work + mesmo chapter.number) — marcar/
+        desmarcar uma variante reflete nas outras.
+        """
         chapter_id = request.data.get("chapter") or request.data.get("chapter_id")
         if not chapter_id:
             return Response({"error": "chapter é obrigatório"}, status=400)
@@ -364,11 +416,14 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
         page_number = int(request.data.get("page_number", 0) or 0)
         completed = bool(request.data.get("completed", False))
 
-        progress, _ = ReadingProgress.objects.update_or_create(
+        progress = _upsert_progress_with_sibling_propagation(
             user=request.user,
             chapter_id=chapter_id,
-            defaults={"page_number": page_number, "completed": completed},
+            completed=completed,
+            page_number=page_number,
         )
+        if progress is None:
+            return Response({"error": "chapter não encontrado"}, status=404)
         return Response(ReadingProgressSerializer(progress).data, status=200)
 
     @action(detail=False, methods=["get"], url_path="continue")
