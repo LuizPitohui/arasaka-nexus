@@ -44,5 +44,10 @@ USER django
 EXPOSE 8000
 
 # Default for the web service. Worker/Beat services override CMD.
+# gthread (5 procs × 8 threads) = ate 40 requests concorrentes vs 3 do
+# sync default. Threads compartilham memoria do proc, custo ~75MB por
+# worker. Servidor tem folga (4.3 GB usados de 7.4 GB). Timeout 60s
+# continua igual.
 CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", \
-     "--workers", "3", "--timeout", "60", "--access-logfile", "-"]
+     "--workers", "5", "--worker-class", "gthread", "--threads", "8", \
+     "--timeout", "60", "--access-logfile", "-"]
