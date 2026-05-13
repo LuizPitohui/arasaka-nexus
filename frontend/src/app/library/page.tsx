@@ -1180,8 +1180,9 @@ function ListCard({
   );
 }
 
-// Deck de capas empilhadas com offset crescente. 5 covers max — extras
-// viram badge "+N" sobre a ultima.
+// Deck horizontal: flex com negative margin pra capas se sobreporem do
+// canto direito. Cada capa fica em cima da anterior via z-index crescente.
+// "+N" badge na ultima quando ha extras.
 function CoverStack({
   items,
   extra,
@@ -1190,66 +1191,56 @@ function CoverStack({
   extra: number;
 }) {
   if (items.length === 0) return null;
-  const W = 72;
-  const H = W * 1.5;
-  const OFFSET = 22;
-  const totalW = W + OFFSET * (items.length - 1);
+  const W = 76;
+  const H = 114;
+  // Quanto cada capa "engole" da anterior. ~70% overlap deixa so uma
+  // borda da capa anterior aparecendo, parecendo deck.
+  const OVERLAP = 52;
   return (
     <div
-      className="relative"
-      style={{ height: H, width: '100%' }}
+      className="flex items-start"
+      style={{ height: H, width: 'fit-content' }}
       aria-label={`${items.length} capas recentes`}
     >
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          height: H,
-          width: totalW,
-        }}
-      >
-        {items.map((item, i) => (
-          <div
-            key={item.id}
-            className="absolute corners-sm overflow-hidden transition-transform"
-            style={{
-              left: i * OFFSET,
-              top: 0,
-              width: W,
-              height: H,
-              background: 'var(--bg-base)',
-              border: '1px solid var(--border-faint)',
-              zIndex: 5 + i,
-              boxShadow:
-                i > 0 ? '-4px 0 10px rgba(0,0,0,0.45)' : 'none',
-            }}
-          >
-            <img
-              src={item.manga.cover || '/placeholder.jpg'}
-              alt={item.manga.title}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-            {i === items.length - 1 && extra > 0 && (
-              <div
-                aria-hidden
-                className="absolute inset-0 flex items-center justify-center"
-                style={{
-                  background: 'rgba(0,0,0,0.7)',
-                  color: '#fff',
-                  fontFamily: 'var(--font-display)',
-                  fontWeight: 900,
-                  fontSize: 22,
-                  letterSpacing: '0.02em',
-                }}
-              >
-                +{extra}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      {items.map((item, i) => (
+        <div
+          key={item.id}
+          className="corners-sm overflow-hidden relative shrink-0 transition-transform"
+          style={{
+            width: W,
+            height: H,
+            marginLeft: i === 0 ? 0 : -OVERLAP,
+            background: 'var(--bg-base)',
+            border: '1px solid var(--border-mid)',
+            zIndex: 10 + i,
+            boxShadow:
+              i > 0 ? '-6px 0 12px rgba(0,0,0,0.55)' : 'none',
+          }}
+        >
+          <img
+            src={item.manga.cover || '/placeholder.jpg'}
+            alt={item.manga.title}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+          {i === items.length - 1 && extra > 0 && (
+            <div
+              aria-hidden
+              className="absolute inset-0 flex items-center justify-center"
+              style={{
+                background: 'rgba(0,0,0,0.72)',
+                color: '#fff',
+                fontFamily: 'var(--font-display)',
+                fontWeight: 900,
+                fontSize: 22,
+                letterSpacing: '0.02em',
+              }}
+            >
+              +{extra}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
