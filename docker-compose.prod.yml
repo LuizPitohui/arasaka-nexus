@@ -156,9 +156,10 @@ services:
     restart: unless-stopped
     profiles: ["mihon"]
     # JVM heap capada em 384m (default ~1GB era exagero pro DB de ~30MB).
-    # mem_limit=512m garante hard cap a nivel de Docker — se vazar, OOM
-    # kill em vez de comer RAM do host. Heap +Xss + metaspace cabe.
-    mem_limit: 512m
+    # mem_limit=768m da folga pro heap 384m + metaspace + threads
+    # (~200 MB native overhead da JVM). 500m de uso real antes da diet,
+    # agora estabiliza em ~450-500 com 30% de headroom.
+    mem_limit: 768m
     environment:
       TZ: America/Sao_Paulo
       BIND_IP: 0.0.0.0
