@@ -1063,6 +1063,22 @@ def import_manga(request):
 # ----------------------------------------------------------------------
 @api_view(["GET"])
 @permission_classes([AllowAny])
+def ping(request):
+    """Endpoint barato pro StatusBar medir latencia real cliente↔servidor.
+
+    Sem DB, sem auth, sem cache de CDN. Response minima ``{"pong": true}``.
+    Bate 1x a cada N segundos por user ativo — carga insignificante mesmo
+    com 100+ users simultaneos.
+    """
+    response = Response({"pong": True})
+    # No-store impede Cloudflare/browser de cachear (mediria latencia falsa
+    # baixa quando hit no edge).
+    response["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
 def home_content(request):
     """Return featured + recent mangás. Never makes upstream calls.
 

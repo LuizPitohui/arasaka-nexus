@@ -10,6 +10,7 @@ from .views import (
     get_chapter_pages,
     home_content,
     import_manga,
+    ping,
     proxy_chapter_image,
     proxy_cover_preview,
     proxy_mihon_cover,
@@ -47,6 +48,7 @@ urlpatterns = [
     path("works/<int:work_id>/sources/", work_sources, name="work_sources"),
     path("import/", import_manga, name="import_manga"),
     path("home-data/", home_content, name="home_content"),
+    path("ping/", ping, name="ping"),
     # Auth
     path("auth/register/", register, name="register"),
     path("auth/logout/", logout, name="logout"),
