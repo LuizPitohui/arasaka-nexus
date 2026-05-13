@@ -102,13 +102,25 @@ class Manga(models.Model):
 
     @property
     def cover_url(self) -> str:
-        """Effective cover URL: local mirror if available, else MangaDex remote."""
+        """Effective cover URL: local mirror if available, else upstream.
+
+        Safety net: covers internas do Suwayomi (rede docker) que vazaram
+        do import sem normalizacao sao reescritas pra ir pelo proxy
+        publico ``/api/cdn/mihon-cover/<external_id>/`` — sem essa
+        traducao, o browser bateria em ``http://suwayomi:4567/...`` e
+        falharia (host nao roteavel) entrando em loop de retry no <img>.
+        """
         if self.cover_path:
             from django.conf import settings as dj_settings
 
             base = (dj_settings.MEDIA_URL or "/media/").rstrip("/")
             return f"{base}/{self.cover_path}"
-        return self.cover or ""
+        cover = self.cover or ""
+        if "/api/v1/manga/" in cover and "/thumbnail" in cover:
+            if self.mangadex_id and self.mangadex_id.startswith("mihon:"):
+                external_id = self.mangadex_id[len("mihon:"):]
+                return f"/api/cdn/mihon-cover/{external_id}/"
+        return cover
 
 
 class Chapter(models.Model):

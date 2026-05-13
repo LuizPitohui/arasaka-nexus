@@ -98,10 +98,22 @@ def _safe_search(src: BaseSource, query: str) -> list[MangaDTO]:
 def _to_search_payload(dto: MangaDTO, src: BaseSource) -> dict:
     """Normaliza um MangaDTO para o shape consumido pelo frontend."""
     cover = dto.cover_url or ""
-    # Capas externas que vão por http(s) passam pelo nosso proxy de preview
-    # para evitar bloqueio de rede e habilitar cache global no edge.
+    # Capas externas que vão por http(s) passam pelo nosso proxy.
+    # Mihon/Suwayomi devolve URL interna da rede docker
+    # (http://suwayomi:4567/api/v1/manga/<id>/thumbnail) — vai pelo proxy
+    # dedicado /api/cdn/mihon-cover/, nao pelo /api/cdn/preview/ generico
+    # (que so allowlist uploads.mangadex.org). Mistura essas duas rotas
+    # gerava 404 em loop no client.
     if cover.startswith("http"):
-        cover = f"/api/cdn/preview/?u={quote(cover, safe='')}"
+        if (
+            src.id == "mihon"
+            and "/api/v1/manga/" in cover
+            and "/thumbnail" in cover
+            and dto.external_id
+        ):
+            cover = f"/api/cdn/mihon-cover/{dto.external_id}/"
+        else:
+            cover = f"/api/cdn/preview/?u={quote(cover, safe='')}"
 
     payload = {
         "id": dto.external_id,
