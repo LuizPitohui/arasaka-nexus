@@ -840,6 +840,13 @@ def search_mangas(request):
             "in_library": True,
             "source": "local",
             "work_id": m.work_id,
+            # work_sources_count vem da contagem de variantes do Work canonico
+            # no catalogo local. Frontend mostra badge "N FONTES" quando >= 2.
+            "work_sources_count": (
+                Manga.objects.filter(work_id=m.work_id, is_active=True).count()
+                if m.work_id
+                else 1
+            ),
         }
         for m in local_qs
     ]
@@ -849,9 +856,70 @@ def search_mangas(request):
     if len(query) > 2 and len(local_qs) < LOCAL_FIRST_THRESHOLD:
         from sources.search import multi_source_search
 
-        results.extend(multi_source_search(query, exclude_dex_ids=all_dex_ids))
+        external_results = multi_source_search(query, exclude_dex_ids=all_dex_ids)
+        # Agrupa externos por titulo normalizado: scanlators diferentes do
+        # mesmo Mihon servem "Solo Leveling" 3x, 1 por extensao instalada.
+        # Sem dedup o user ve 3 cards visualmente identicos — agora vira 1
+        # card com badge "N FONTES" indicando que ha alternativas.
+        grouped = _group_external_search_results(external_results)
+        results.extend(grouped)
 
     return Response(results)
+
+
+def _group_external_search_results(items: list[dict]) -> list[dict]:
+    """Agrupa resultados externos por titulo normalizado.
+
+    Cada grupo vira 1 item representante (o primeiro encontrado, que tende
+    a ser do source preferido por ordem de adapter) com ``work_sources_count``
+    setado pro tamanho do grupo. Carrega ``variants`` com metadata das outras
+    fontes pra futura UI de switcher de import (nao usado hoje).
+    """
+    import re
+    import unicodedata
+
+    def _norm(s: str) -> str:
+        s = (s or "").strip().lower()
+        # remove diacriticos
+        s = "".join(
+            c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
+        )
+        # remove pontuacao e collapse spaces
+        s = re.sub(r"[^\w\s]", " ", s)
+        return re.sub(r"\s+", " ", s).strip()
+
+    buckets: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for it in items:
+        key = _norm(it.get("title") or "")
+        if not key:
+            # mantem itens sem titulo sem agrupar
+            order.append(f"__noname_{len(order)}")
+            buckets[order[-1]] = [it]
+            continue
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(it)
+
+    out: list[dict] = []
+    for key in order:
+        group = buckets[key]
+        head = dict(group[0])  # representante
+        head["work_sources_count"] = len(group)
+        if len(group) > 1:
+            head["variants"] = [
+                {
+                    "source": v.get("source"),
+                    "sub_source": v.get("sub_source"),
+                    "external_id": v.get("external_id"),
+                    "id": v.get("id"),
+                    "cover": v.get("cover"),
+                }
+                for v in group
+            ]
+        out.append(head)
+    return out
 
 
 # ----------------------------------------------------------------------

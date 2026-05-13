@@ -19,6 +19,10 @@ type SearchResult = {
   source?: string;
   external_id?: string;
   sub_source?: string;
+  /** Numero de variantes (Work canonical ou scanlators externos do mesmo
+   *  titulo agrupados). >= 2 ativa o badge "N FONTES" e esconde o
+   *  SourceBadge individual (que ficaria conflitando). */
+  work_sources_count?: number;
 };
 
 function SearchContent() {
@@ -148,26 +152,39 @@ function SearchContent() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-5 gap-y-8">
-          {results.map((m, i) => (
-            <div
-              key={`${m.source ?? 'mangadex'}-${m.external_id ?? m.id}`}
-              onClick={() => open(m)}
-              className="cursor-pointer relative"
-            >
-              <div className="absolute top-2 right-2 z-10">
-                <SourceBadge source={m.source} inLibrary={m.in_library} subSource={m.sub_source} />
+          {results.map((m, i) => {
+            const multiSource = (m.work_sources_count ?? 1) > 1;
+            return (
+              <div
+                key={`${m.source ?? 'mangadex'}-${m.external_id ?? m.id}`}
+                onClick={() => open(m)}
+                className="cursor-pointer relative"
+              >
+                {/* SourceBadge so quando NAO ha multi-source — o badge
+                    "N FONTES" do MangaCard ja indica fonte multipla e
+                    evita stacking visual no top-right do card. */}
+                {!multiSource && (
+                  <div className="absolute top-2 right-2 z-10">
+                    <SourceBadge
+                      source={m.source}
+                      inLibrary={m.in_library}
+                      subSource={m.sub_source}
+                    />
+                  </div>
+                )}
+                <MangaCard
+                  index={i}
+                  manga={{
+                    id: typeof m.id === 'number' ? m.id : 0,
+                    title: m.title,
+                    cover: m.cover,
+                    status: m.status,
+                    work_sources_count: m.work_sources_count,
+                  }}
+                />
               </div>
-              <MangaCard
-                index={i}
-                manga={{
-                  id: typeof m.id === 'number' ? m.id : 0,
-                  title: m.title,
-                  cover: m.cover,
-                  status: m.status,
-                }}
-              />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </main>
