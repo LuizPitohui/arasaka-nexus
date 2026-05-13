@@ -12,6 +12,7 @@ import {
   Menu,
   Shuffle,
   Tag,
+  Smartphone,
   Trophy,
   User,
   X,
@@ -443,6 +444,22 @@ function MobileDrawer({
               </DrawerLink>
             </>
           )}
+
+          <p
+            className="px-5 mt-6 mb-2 mono text-[10px] uppercase tracking-[0.3em]"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // INSTALL
+          </p>
+          <DrawerLink
+            href="/app"
+            index={null}
+            active={pathname === '/app'}
+            icon={<Smartphone className="w-4 h-4" />}
+            onClick={onClose}
+          >
+            App Android
+          </DrawerLink>
         </nav>
 
         {/* Footer action */}

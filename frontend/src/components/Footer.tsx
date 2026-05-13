@@ -57,7 +57,7 @@ export function Footer() {
         }}
       />
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-8">
         <div className="md:col-span-2">
           <p
             className="mono text-[10px] uppercase tracking-[0.3em]"
@@ -80,6 +80,13 @@ export function Footer() {
             // FAN_PROJECT · NÃO_OFICIAL · USO_NÃO_COMERCIAL
           </p>
         </div>
+
+        <FooterColumn title="// APP">
+          <FooterLink href="/app">App Android</FooterLink>
+          <FooterLinkExternal href={GITHUB_LATEST_RELEASE_URL}>
+            GitHub Releases
+          </FooterLinkExternal>
+        </FooterColumn>
 
         <FooterColumn title="// LEGAL">
           <FooterLink href="/termos">Termos de Uso</FooterLink>
@@ -157,6 +164,31 @@ function FooterLink({ href, children }: { href: string; children: React.ReactNod
       >
         {children}
       </Link>
+    </li>
+  );
+}
+
+function FooterLinkExternal({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <li>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mono text-[11px] uppercase tracking-widest transition-colors hover:text-white inline-flex items-center gap-1"
+        style={{ color: 'var(--fg-secondary)' }}
+      >
+        {children}
+        <span aria-hidden style={{ fontSize: 9, color: 'var(--fg-muted)' }}>
+          ↗
+        </span>
+      </a>
     </li>
   );
 }
