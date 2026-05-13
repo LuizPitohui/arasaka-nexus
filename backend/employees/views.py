@@ -857,23 +857,25 @@ def search_mangas(request):
         from sources.search import multi_source_search
 
         external_results = multi_source_search(query, exclude_dex_ids=all_dex_ids)
-        # Agrupa externos por titulo normalizado: scanlators diferentes do
-        # mesmo Mihon servem "Solo Leveling" 3x, 1 por extensao instalada.
-        # Sem dedup o user ve 3 cards visualmente identicos — agora vira 1
-        # card com badge "N FONTES" indicando que ha alternativas.
-        grouped = _group_external_search_results(external_results)
-        results.extend(grouped)
+        results.extend(external_results)
+
+    # Agrupa o resultado FINAL (locais + externos) por titulo normalizado.
+    # Scanlators diferentes do Mihon servem a mesma obra com o mesmo titulo,
+    # e as vezes uma variante ja esta no DB local + externos disponiveis pra
+    # importar. Mantem locais como representantes (source=local tem
+    # prioridade) e popula work_sources_count com o tamanho do grupo.
+    results = _group_search_results(results)
 
     return Response(results)
 
 
-def _group_external_search_results(items: list[dict]) -> list[dict]:
-    """Agrupa resultados externos por titulo normalizado.
+def _group_search_results(items: list[dict]) -> list[dict]:
+    """Agrupa resultados de busca (locais + externos) por titulo normalizado.
 
-    Cada grupo vira 1 item representante (o primeiro encontrado, que tende
-    a ser do source preferido por ordem de adapter) com ``work_sources_count``
-    setado pro tamanho do grupo. Carrega ``variants`` com metadata das outras
-    fontes pra futura UI de switcher de import (nao usado hoje).
+    Cada grupo vira 1 representante (preferindo ``source == 'local'`` quando
+    presente — UX prioriza obras ja no catalogo). work_sources_count vira o
+    tamanho do grupo. Carrega ``variants`` com metadata das outras fontes
+    pra futura UI de switcher de import.
     """
     import re
     import unicodedata
@@ -905,8 +907,13 @@ def _group_external_search_results(items: list[dict]) -> list[dict]:
     out: list[dict] = []
     for key in order:
         group = buckets[key]
-        head = dict(group[0])  # representante
-        head["work_sources_count"] = len(group)
+        # Prefere o item com source='local' como representante (obras ja
+        # importadas viram clicar-pra-ler direto, em vez de re-importar).
+        local_item = next((it for it in group if it.get("source") == "local"), None)
+        head = dict(local_item if local_item else group[0])
+        # work_sources_count combina o que ja existia (variantes locais do
+        # Work canonical) com o total do grupo agrupado por titulo.
+        head["work_sources_count"] = max(head.get("work_sources_count") or 1, len(group))
         if len(group) > 1:
             head["variants"] = [
                 {
