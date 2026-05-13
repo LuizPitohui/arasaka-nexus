@@ -6,6 +6,7 @@ import { CookieConsent } from '@/components/CookieConsent';
 import CrtOverlay from '@/components/CrtOverlay';
 import { FooterShell } from '@/components/FooterShell';
 import { HeaderShell } from '@/components/HeaderShell';
+import UpdateBanner from '@/components/UpdateBanner';
 import { PWAInit } from '@/components/PWAInit';
 import RouteTransition from '@/components/RouteTransition';
 import StatusBar from '@/components/StatusBar';
@@ -91,6 +92,7 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body suppressHydrationWarning={true}>
         <BootSequence />
+        <UpdateBanner />
         <HeaderShell />
         {children}
         <FooterShell />
