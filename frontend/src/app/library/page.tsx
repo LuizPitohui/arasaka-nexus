@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   Archive,
@@ -148,10 +148,46 @@ function useCountUp(target: number, duration = 900): number {
 // Page
 // ---------------------------------------------------------------------------
 export default function LibraryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+          <Loader
+            fullscreen
+            label="OPENING_VAULT"
+            caption="// DECRYPTING_PERSONAL_INDEX"
+          />
+        </div>
+      }
+    >
+      <LibraryContent />
+    </Suspense>
+  );
+}
+
+function isTab(v: string | null): v is Tab {
+  return v === 'progress' || v === 'favorites' || v === 'lists';
+}
+
+function LibraryContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Aba na URL: ?tab=progress|favorites|lists. Permite browser back/forward
+  // restaurar a aba correta e share de link direto pra uma aba especifica.
+  const tabParam = searchParams.get('tab');
+  const tab: Tab = isTab(tabParam) ? tabParam : 'progress';
+  const setTab = (next: Tab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'progress') params.delete('tab');
+    else params.set('tab', next);
+    const qs = params.toString();
+    // replace pra nao acumular entry de history a cada troca de aba.
+    router.replace(qs ? `/library?${qs}` : '/library', { scroll: false });
+  };
+
   const [data, setData] = useState<LibraryOverview | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('progress');
   const [newListName, setNewListName] = useState('');
   const [creatingList, setCreatingList] = useState(false);
   const [favSort, setFavSort] = useState<FavSort>('updated');
