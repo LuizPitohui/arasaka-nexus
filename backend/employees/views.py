@@ -44,6 +44,28 @@ def _filter_adult_qs(request, qs):
     return qs.filter(content_rating__in=SAFE_RATINGS)
 
 
+def _filter_by_preferred_language(request, qs):
+    """Quando o user ligou Profile.show_preferred_language_only, oculta
+    mangas que NAO tem nenhum capitulo na ``preferred_language``.
+
+    Custo no DB: 1 JOIN extra com Chapter + DISTINCT. Indexado por
+    ``translated_language`` (db_index=True no model), entao queries de
+    listagem (limit ~20-100 itens) seguem rapidas mesmo com 25k+ mangas.
+
+    Mangas SEM cap algum tambem caem fora — coerente com o esperado
+    pelo user que ativa "so meu idioma".
+    """
+    if not request.user.is_authenticated:
+        return qs
+    profile = getattr(request.user, "profile", None)
+    if not profile or not profile.show_preferred_language_only:
+        return qs
+    lang = (profile.preferred_language or "").strip().lower()
+    if not lang:
+        return qs
+    return qs.filter(chapters__translated_language=lang).distinct()
+
+
 def _dedupe_by_work(qs):
     """Filtra ``qs`` pra incluir apenas a melhor variante de cada Work.
 
@@ -212,6 +234,7 @@ class MangaViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = Manga.objects.filter(is_active=True).prefetch_related("categories")
         qs = _filter_adult_qs(self.request, qs)
+        qs = _filter_by_preferred_language(self.request, qs)
 
         params = self.request.query_params
 
@@ -262,6 +285,7 @@ class MangaViewSet(viewsets.ModelViewSet):
             .order_by("-favorites_count", "-id")
         )
         qs = _filter_adult_qs(request, qs)
+        qs = _filter_by_preferred_language(request, qs)
         qs = _dedupe_by_work(qs)
         page = self.paginate_queryset(qs)
         if page is not None:
@@ -292,6 +316,7 @@ class MangaViewSet(viewsets.ModelViewSet):
             .order_by("-latest_chapter_at", "-id")
         )
         qs = _filter_adult_qs(request, qs)
+        qs = _filter_by_preferred_language(request, qs)
         qs = _dedupe_by_work(qs)
         page = self.paginate_queryset(qs)
         if page is not None:
@@ -836,6 +861,7 @@ def search_mangas(request):
     base_qs = _filter_adult_qs(
         request, Manga.objects.filter(title__icontains=query, is_active=True)
     )
+    base_qs = _filter_by_preferred_language(request, base_qs)
     deduped_qs = _dedupe_by_work(base_qs).order_by("-id")[:LOCAL_LIMIT]
     local_qs = list(deduped_qs)
 

@@ -39,6 +39,13 @@ class Profile(models.Model):
     # birthdate >= 18 — user must explicitly opt-in via UI.
     show_adult = models.BooleanField(default=False)
 
+    # Filtro de catalogo por lingua: quando True, listagens (populares,
+    # ultimos, browse, search) escondem mangas sem nenhum capitulo na
+    # ``preferred_language`` do user. Default False — listagem comeca
+    # ampla, user opta por restringir. Aviso de impacto no UI da
+    # checkbox (3 em 4 mangas somem se pref=pt-br).
+    show_preferred_language_only = models.BooleanField(default=False)
+
     # Push delivery mode:
     #   immediate (default): cada capitulo gera 1 push assim que entra
     #   daily: nada de push em tempo real; 1 push por dia agrupando todos

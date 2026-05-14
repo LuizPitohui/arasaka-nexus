@@ -18,6 +18,7 @@ type Profile = {
   avatar: string | null;
   bio: string;
   preferred_language: string;
+  show_preferred_language_only: boolean;
   reader_mode: 'vertical' | 'paged' | 'webtoon' | 'double';
   birthdate: string | null;
   birthdate_locked: boolean;
@@ -121,6 +122,7 @@ export default function ProfilePage() {
       const payload: Record<string, unknown> = {
         bio: profile.bio,
         preferred_language: profile.preferred_language,
+        show_preferred_language_only: profile.show_preferred_language_only,
         reader_mode: profile.reader_mode,
         show_adult: profile.show_adult,
         digest_mode: profile.digest_mode,
@@ -332,6 +334,79 @@ export default function ProfilePage() {
                   </button>
                 );
               })}
+            </div>
+
+            {/* Filtro opt-in: so mostrar mangas no idioma preferido */}
+            <div
+              className="mt-5 p-4 corners-sm"
+              style={{
+                background: profile.show_preferred_language_only
+                  ? 'rgba(220,38,38,0.06)'
+                  : 'var(--bg-elevated)',
+                border: '1px solid',
+                borderColor: profile.show_preferred_language_only
+                  ? 'var(--arasaka-red)'
+                  : 'var(--border-mid)',
+              }}
+            >
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={profile.show_preferred_language_only}
+                  onChange={(e) =>
+                    update('show_preferred_language_only', e.target.checked)
+                  }
+                  className="mt-1 accent-[var(--arasaka-red)]"
+                />
+                <span className="flex-1">
+                  <span
+                    className="mono text-[11px] uppercase tracking-widest font-bold block"
+                    style={{
+                      color: profile.show_preferred_language_only
+                        ? 'var(--arasaka-red)'
+                        : 'var(--fg-primary)',
+                    }}
+                  >
+                    Mostrar somente idioma preferido
+                  </span>
+                  <span
+                    className="block mono text-[10px] uppercase tracking-widest mt-2"
+                    style={{ color: 'var(--fg-muted)' }}
+                  >
+                    Filtra populares, ultimos, browse e busca pra so exibir
+                    obras com pelo menos 1 capitulo em{' '}
+                    <span style={{ color: 'var(--arasaka-red)' }}>
+                      {profile.preferred_language === 'pt-br'
+                        ? 'PORTUGUES'
+                        : 'INGLES'}
+                    </span>
+                    .
+                  </span>
+                  {profile.preferred_language === 'pt-br' && (
+                    <span
+                      className="block text-[11px] mt-2 leading-relaxed"
+                      style={{ color: 'var(--fg-secondary)' }}
+                    >
+                      <span style={{ color: 'var(--neon-yellow)' }}>
+                        ⚠ Aviso:
+                      </span>{' '}
+                      pra portugues, scanlators BR cobrem so ~25% do catalogo.
+                      Ativar essa flag esconde cerca de 3 em cada 4 obras do
+                      seu catalogo (~19.000 mangas).
+                    </span>
+                  )}
+                  {profile.preferred_language === 'en' && (
+                    <span
+                      className="block text-[11px] mt-2 leading-relaxed"
+                      style={{ color: 'var(--fg-secondary)' }}
+                    >
+                      Pra ingles, ~89% do catalogo passa. Filtro esconde ~11%
+                      (~2.800 mangas que so estao em portugues ou outras
+                      linguas).
+                    </span>
+                  )}
+                </span>
+              </label>
             </div>
           </Section>
 
