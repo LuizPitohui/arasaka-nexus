@@ -302,6 +302,47 @@ class ScoreEvent(models.Model):
         return f"{self.user.username} +{self.points} ({self.kind})"
 
 
+class Follow(models.Model):
+    """Seguidor → seguido. Direcional (user_a segue user_b ≠ vice-versa).
+
+    Constraint unique pra evitar follow duplicado. Self-follow bloqueado
+    via clean() — defensivo, view tambem checa antes.
+    """
+
+    follower = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="following_set",
+        help_text="Quem segue",
+    )
+    followed = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="followers_set",
+        help_text="Quem e seguido",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["follower", "followed"], name="unique_follow_pair"
+            ),
+            models.CheckConstraint(
+                check=~models.Q(follower=models.F("followed")),
+                name="no_self_follow",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["follower", "-created_at"]),
+            models.Index(fields=["followed", "-created_at"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.follower.username} → {self.followed.username}"
+
+
 class UserSeasonStats(models.Model):
     """Snapshot agregado de score+rank por (user, season).
 

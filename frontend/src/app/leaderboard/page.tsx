@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Clock, Crown, Flame, Hourglass, Layers, Trophy } from 'lucide-react';
 
@@ -658,12 +659,13 @@ function PodiumCard({
           >
             {c.label}
           </p>
-          <p
-            className="text-base font-bold truncate mt-0.5"
+          <Link
+            href={`/u/${encodeURIComponent(entry.username)}`}
+            className="text-base font-bold truncate mt-0.5 hover:text-[var(--arasaka-red)] transition-colors block"
             style={{ color: 'var(--fg-primary)' }}
           >
             {entry.username}
-          </p>
+          </Link>
           <p
             className="mono text-[10px] uppercase tracking-widest mt-1"
             style={{ color: 'var(--fg-muted)' }}
@@ -770,7 +772,13 @@ function Row({
             className="text-sm font-bold truncate"
             style={{ color: 'var(--fg-primary)' }}
           >
-            {entry.username}
+            <Link
+              href={`/u/${encodeURIComponent(entry.username)}`}
+              className="hover:text-[var(--arasaka-red)] transition-colors"
+              style={{ color: 'var(--fg-primary)' }}
+            >
+              {entry.username}
+            </Link>
             {highlight && (
               <span
                 className="mono ml-2 text-[9px] uppercase tracking-widest px-1.5 py-0.5"

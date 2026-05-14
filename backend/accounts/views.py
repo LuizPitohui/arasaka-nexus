@@ -13,6 +13,7 @@ from employees.serializers import MangaListSerializer
 
 from .models import (
     Favorite,
+    Follow,
     Profile,
     PushSubscription,
     ReadingList,
@@ -875,4 +876,141 @@ def library_overview(request):
             "in_progress": ReadingProgressSerializer(progress, many=True).data,
             "lists": ReadingListSerializer(lists, many=True).data,
         }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Comunidade — follow, perfis publicos, listas compartilhadas
+# ---------------------------------------------------------------------------
+def _public_user_payload(user, viewer=None) -> dict:
+    """Shape resumido pra ser embedded em listagens/perfil. ``viewer`` (user
+    autenticado) habilita ``is_following`` e ``is_self`` flags.
+    """
+    profile = getattr(user, "profile", None)
+    avatar = (
+        profile.avatar.url if profile and profile.avatar else None
+    )
+    season = Season.current()
+    rank_tier = 0
+    rank_score = 0
+    if season:
+        stats = UserSeasonStats.objects.filter(user=user, season=season).first()
+        if stats:
+            rank_tier = stats.rank_tier
+            rank_score = stats.score
+    payload = {
+        "id": user.id,
+        "username": user.username,
+        "avatar": avatar,
+        "bio": (profile.bio if profile else "") or "",
+        "rank": _rank_payload(rank_tier),
+        "score": rank_score,
+        "followers_count": Follow.objects.filter(followed=user).count(),
+        "following_count": Follow.objects.filter(follower=user).count(),
+        "is_self": bool(viewer and viewer.id == user.id),
+        "is_following": (
+            bool(
+                viewer
+                and viewer.is_authenticated
+                and viewer.id != user.id
+                and Follow.objects.filter(follower=viewer, followed=user).exists()
+            )
+        ),
+    }
+    return payload
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def public_user_profile(request, username: str):
+    """``GET /accounts/users/<username>/`` — dados publicos do perfil."""
+    from django.contrib.auth import get_user_model
+
+    target = get_user_model().objects.filter(username__iexact=username).first()
+    if not target:
+        return Response({"detail": "User nao encontrado."}, status=404)
+    viewer = request.user if request.user.is_authenticated else None
+    return Response(_public_user_payload(target, viewer=viewer))
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def public_user_lists(request, username: str):
+    """``GET /accounts/users/<username>/lists/`` — listas publicas do user."""
+    from django.contrib.auth import get_user_model
+
+    target = get_user_model().objects.filter(username__iexact=username).first()
+    if not target:
+        return Response({"detail": "User nao encontrado."}, status=404)
+    qs = (
+        ReadingList.objects.filter(user=target, is_public=True)
+        .prefetch_related("items__manga__categories")
+        .order_by("-updated_at")
+    )
+    return Response(ReadingListSerializer(qs, many=True).data)
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+def follow_toggle(request, username: str):
+    """``POST/DELETE /accounts/follow/<username>/`` — segue ou para de seguir.
+
+    Idempotente: POST 2x devolve 200 (ja seguia); DELETE 2x devolve 204
+    (ja nao seguia).
+    """
+    from django.contrib.auth import get_user_model
+
+    target = get_user_model().objects.filter(username__iexact=username).first()
+    if not target:
+        return Response({"detail": "User nao encontrado."}, status=404)
+    if target.id == request.user.id:
+        return Response(
+            {"detail": "Nao da pra seguir voce mesmo."}, status=400
+        )
+
+    if request.method == "POST":
+        Follow.objects.get_or_create(follower=request.user, followed=target)
+        return Response(
+            {
+                "is_following": True,
+                "followers_count": Follow.objects.filter(followed=target).count(),
+            },
+            status=200,
+        )
+    # DELETE
+    Follow.objects.filter(follower=request.user, followed=target).delete()
+    return Response(
+        {
+            "is_following": False,
+            "followers_count": Follow.objects.filter(followed=target).count(),
+        },
+        status=200,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def followers_list(request):
+    """``GET /accounts/me/followers/`` — quem segue o user autenticado."""
+    rows = (
+        Follow.objects.filter(followed=request.user)
+        .select_related("follower__profile")
+        .order_by("-created_at")[:200]
+    )
+    return Response(
+        [_public_user_payload(r.follower, viewer=request.user) for r in rows]
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def following_list(request):
+    """``GET /accounts/me/following/`` — quem o user autenticado segue."""
+    rows = (
+        Follow.objects.filter(follower=request.user)
+        .select_related("followed__profile")
+        .order_by("-created_at")[:200]
+    )
+    return Response(
+        [_public_user_payload(r.followed, viewer=request.user) for r in rows]
     )
