@@ -35,12 +35,16 @@ function BrowseInner() {
   const initialStatus = searchParams.get('status') ?? '';
   const initialOrdering = searchParams.get('ordering') ?? 'recent';
   const initialTitle = searchParams.get('title') ?? '';
+  const initialPage = Math.max(
+    1,
+    parseInt(searchParams.get('page') || '1', 10) || 1,
+  );
 
   const [selectedGenres, setSelectedGenres] = useState<string[]>(initialGenres);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [ordering, setOrdering] = useState(initialOrdering);
   const [title, setTitle] = useState(initialTitle);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage);
 
   const [genres, setGenres] = useState<Genre[]>([]);
   const [data, setData] = useState<Paginated<MangaSummary> | null>(null);
@@ -73,6 +77,9 @@ function BrowseInner() {
     if (statusFilter) urlQs.set('status', statusFilter);
     if (ordering !== 'recent') urlQs.set('ordering', ordering);
     if (title.trim()) urlQs.set('title', title.trim());
+    // Pagina vai pra URL pra back/forward restaurarem a posicao certa.
+    // Omite quando = 1 (URL limpa no estado inicial).
+    if (page > 1) urlQs.set('page', String(page));
     const newUrl = urlQs.toString() ? `/browse?${urlQs.toString()}` : '/browse';
     router.replace(newUrl, { scroll: false });
   }, [selectedGenres, statusFilter, ordering, title, page, router]);

@@ -1,14 +1,42 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+
 import { api } from '@/lib/api';
 import Loader from '@/components/Loader';
 import type { MangaSummary, Paginated } from '@/lib/types';
 import { MangaGrid, Pager } from '@/components/MangaGrid';
 
 export default function LatestPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+          <Loader fullscreen label="SYNCING_FEED" />
+        </div>
+      }
+    >
+      <LatestContent />
+    </Suspense>
+  );
+}
+
+function LatestContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // ?page=N persiste pagina via back/forward. Default 1 quando ausente.
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+
+  const setPage = (next: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next <= 1) params.delete('page');
+    else params.set('page', String(next));
+    const qs = params.toString();
+    router.push(qs ? `/latest?${qs}` : '/latest', { scroll: false });
+  };
+
   const [data, setData] = useState<Paginated<MangaSummary> | null>(null);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

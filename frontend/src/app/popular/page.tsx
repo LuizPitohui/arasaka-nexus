@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+
 import { api } from '@/lib/api';
 import Loader from '@/components/Loader';
 import { useCountUp } from '@/hooks/useCountUp';
@@ -8,8 +10,35 @@ import type { MangaSummary, Paginated } from '@/lib/types';
 import { MangaGrid, Pager } from '@/components/MangaGrid';
 
 export default function PopularPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+          <Loader fullscreen label="FETCHING_TRENDING" />
+        </div>
+      }
+    >
+      <PopularContent />
+    </Suspense>
+  );
+}
+
+function PopularContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // Pagina vive em ?page=N — back/forward do browser restaura, link
+  // compartilhavel pega no point certo. Default 1 quando ausente.
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+
+  const setPage = (next: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next <= 1) params.delete('page');
+    else params.set('page', String(next));
+    const qs = params.toString();
+    router.push(qs ? `/popular?${qs}` : '/popular', { scroll: false });
+  };
+
   const [data, setData] = useState<Paginated<MangaSummary> | null>(null);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const animatedCount = useCountUp(data?.count ?? 0);
 
