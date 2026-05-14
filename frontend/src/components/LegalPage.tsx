@@ -1,11 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ArrowLeft, FileText } from 'lucide-react';
 
 import Loader from '@/components/Loader';
 import { ApiError, api } from '@/lib/api';
+import { useGoBack } from '@/hooks/useGoBack';
 
 type Doc = {
   slug: string;
@@ -125,6 +125,7 @@ export function LegalPage({ slug }: { slug: string }) {
   const [doc, setDoc] = useState<Doc | null>(null);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
+  const goBack = useGoBack();
 
   useEffect(() => {
     let cancelled = false;
@@ -164,13 +165,14 @@ export function LegalPage({ slug }: { slug: string }) {
       style={{ background: 'var(--bg-base)', color: 'var(--fg-primary)' }}
     >
       <div className="max-w-3xl mx-auto p-6 md:p-10">
-        <Link
-          href="/"
+        <button
+          type="button"
+          onClick={goBack}
           className="inline-flex items-center gap-2 mono text-[11px] uppercase tracking-widest mb-8 transition-colors hover:text-white"
           style={{ color: 'var(--fg-muted)' }}
         >
-          <ArrowLeft className="w-4 h-4" /> // RETURN_HOME
-        </Link>
+          <ArrowLeft className="w-4 h-4" /> // VOLTAR
+        </button>
 
         <p
           className="mono text-[11px] uppercase tracking-[0.3em] mb-3"

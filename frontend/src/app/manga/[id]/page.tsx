@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 
 import { ApiError, api, tokenStore } from '@/lib/api';
+import { useGoBack } from '@/hooks/useGoBack';
 import { AdultPageGate, useAdultReveal } from '@/components/AdultLock';
 import { LanguageBadge, getLangSpec } from '@/components/LanguageBadge';
 import { isAdultRating } from '@/lib/types';
@@ -80,6 +81,7 @@ const LANG_PREF_KEY = 'nexus_chapter_lang';
 export default function MangaDetails() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const goBack = useGoBack();
   const [manga, setManga] = useState<MangaDetail | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [langs, setLangs] = useState<LangStat[]>([]);
@@ -379,7 +381,7 @@ export default function MangaDetails() {
       <AdultGate
         manga={manga}
         authed={authed}
-        onBack={() => router.push('/')}
+        onBack={goBack}
       />
       <MangaDetailBody
         manga={manga}
@@ -468,6 +470,7 @@ function MangaDetailBody({
   onMarkUpTo,
 }: MangaDetailBodyProps) {
   const { isAdult, revealed } = useAdultReveal(manga.id, manga.content_rating);
+  const goBack = useGoBack();
   if (isAdult && !revealed) return null;
   return (
     <main
@@ -500,11 +503,11 @@ function MangaDetailBody({
 
       <div className="relative z-10 max-w-5xl mx-auto p-6 md:pt-16">
         <button
-          onClick={() => router.push('/')}
+          onClick={goBack}
           className="flex items-center gap-2 mono text-[11px] uppercase tracking-widest mb-8 transition-colors hover:text-white"
           style={{ color: 'var(--fg-muted)' }}
         >
-          <ArrowLeft className="w-4 h-4" /> // RETURN_HOME
+          <ArrowLeft className="w-4 h-4" /> // VOLTAR
         </button>
 
         <p className="kicker mb-3">
