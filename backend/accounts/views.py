@@ -512,6 +512,13 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
         variantes do mesmo Work como o ``create()`` faz.
 
         Body: ``{"chapter_ids": [1,2,3], "completed": true}``
+
+        **Nao concede pontos de ranking.** Bulk e ferramenta de ajuste
+        de estado (migrar de outro app, alinhar leitura, marcar oneshots
+        descartados). Pontos sao reservados pra leitura real via reader
+        (que dispara o signal com tempo decorrido valido). Antes dessa
+        regra, bulk era o vetor de farm #1 — 200 caps de Solo Leveling
+        marcados em 1 clique viravam +2000 pts instantaneos.
         """
         chapter_ids = request.data.get("chapter_ids") or []
         completed = bool(request.data.get("completed", True))
@@ -524,24 +531,32 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
         chapter_ids = [int(c) for c in chapter_ids[:500] if str(c).isdigit()]
         from employees.models import Chapter
 
+        from .signals import skip_scoring
+
         valid_ids = set(
             Chapter.objects.filter(id__in=chapter_ids).values_list("id", flat=True)
         )
         results = []
-        for cid in chapter_ids:
-            if cid not in valid_ids:
-                continue
-            progress = _upsert_progress_with_sibling_propagation(
-                user=request.user, chapter_id=cid, completed=completed
-            )
-            if progress:
-                results.append(progress.id)
-        return Response({"updated": len(results)}, status=200)
+        with skip_scoring():
+            for cid in chapter_ids:
+                if cid not in valid_ids:
+                    continue
+                progress = _upsert_progress_with_sibling_propagation(
+                    user=request.user, chapter_id=cid, completed=completed
+                )
+                if progress:
+                    results.append(progress.id)
+        return Response({"updated": len(results), "scored": False}, status=200)
 
     def create(self, request, *args, **kwargs):
         """Upsert by (user, chapter). Propaga ``completed`` pra todos os
         capitulos "irmaos" (mesmo Work + mesmo chapter.number) — marcar/
         desmarcar uma variante reflete nas outras.
+
+        Anti-abuso: ``completed=true`` exige ``page_number > 0``. O reader
+        sempre envia (ultima pagina ou data.pages.length). Curl batendo
+        direto sem ler nada e rejeitado. Combinado com o gate de tempo
+        minimo no signal, fecha o farming via API direta.
         """
         chapter_id = request.data.get("chapter") or request.data.get("chapter_id")
         if not chapter_id:
@@ -549,6 +564,12 @@ class ReadingProgressViewSet(viewsets.ModelViewSet):
 
         page_number = int(request.data.get("page_number", 0) or 0)
         completed = bool(request.data.get("completed", False))
+
+        if completed and page_number <= 0:
+            return Response(
+                {"error": "page_number > 0 obrigatorio quando completed=true"},
+                status=400,
+            )
 
         progress = _upsert_progress_with_sibling_propagation(
             user=request.user,

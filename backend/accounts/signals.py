@@ -1,3 +1,5 @@
+import threading
+
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F
@@ -6,11 +8,38 @@ from django.dispatch import receiver
 
 from .models import Profile, ReadingProgress, ScoreEvent, Season, UserSeasonStats
 from .ranking import (
+    MIN_READ_SECONDS_FOR_POINTS,
     POINTS_CHAPTER,
     POINTS_WORK_BONUS_PER_CHAPTER,
     rank_for_score,
     reading_time_points,
 )
+
+
+# Thread-local "no-score" flag. Quando setado pra True (via context manager
+# scoring_disabled() ou skip_scoring()), o signal handler de ReadingProgress
+# nao gera ScoreEvent. Usado pelo bulk endpoint pra permitir que o user
+# alinhe estado de leitura (ex: migrou do Mihon) sem inflar score.
+_score_gate = threading.local()
+
+
+def scoring_is_disabled() -> bool:
+    return bool(getattr(_score_gate, "disabled", False))
+
+
+class skip_scoring:
+    """Context manager: dentro do bloco, post_save de ReadingProgress nao
+    cria ScoreEvent. Usar em writes em lote / ajustes administrativos /
+    backfills onde o user nao "leu" de verdade."""
+
+    def __enter__(self):
+        self._prev = getattr(_score_gate, "disabled", False)
+        _score_gate.disabled = True
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        _score_gate.disabled = self._prev
+        return False
 
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
@@ -39,11 +68,25 @@ def award_score_on_completion(sender, instance: ReadingProgress, **kwargs):
     if not instance.completed:
         return
 
+    # Bulk endpoint / admin actions / backfills passam por aqui sem dar
+    # pontos. O estado de "lido" e persistido normalmente.
+    if scoring_is_disabled():
+        return
+
     season = Season.current()
     if season is None:
         # Sem season ativa (instalação nova antes do seed). Silenciosamente
         # não pontua — quando a season for criada, capítulos futuros pontuam.
         return
+
+    # Anti-farm: o user precisa ter ficado um tempo minimo entre abrir o
+    # capitulo e marcar como lido. Capitulos abertos+marcados em <30s sao
+    # tratados como skim — estado de leitura registra, mas nao gera pontos.
+    # ``created_at`` e auto_now_add (nullable so em rows legadas pre-0008).
+    if instance.created_at:
+        elapsed = (instance.updated_at - instance.created_at).total_seconds()
+        if elapsed < MIN_READ_SECONDS_FOR_POINTS:
+            return
 
     user_id = instance.user_id
     chapter_id = instance.chapter_id

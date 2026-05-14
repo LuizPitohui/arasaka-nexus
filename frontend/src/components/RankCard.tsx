@@ -209,12 +209,12 @@ export default function RankCard() {
               <BreakdownChip
                 label="CAPS"
                 value={data.breakdown.chapter}
-                hint="10 pts por capitulo lido. Marca automaticamente ao terminar o reader, ou via 'marcar como lido' na lista."
+                hint="5 pts por capitulo lido pelo reader. Precisa ficar ao menos 30s no capitulo. 'Marcar lido em lote' NAO concede pontos."
               />
               <BreakdownChip
                 label="OBRAS"
                 value={data.breakdown.work_complete}
-                hint="Bonus de 5 × numero de caps ao completar uma obra inteira. Paga uma vez por obra na season."
+                hint="Bonus de 3 × numero de caps ao completar uma obra inteira. Paga uma vez por obra na season."
               />
               <BreakdownChip
                 label="TEMPO"

@@ -86,17 +86,17 @@ export default function RankingRules({ tiers }: { tiers: RankPayload[] }) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <PointCard
                 icon={<BookOpen className="w-4 h-4" />}
-                value="10"
+                value="5"
                 unit="PTS"
                 title="POR CAPITULO"
-                desc="Cada vez que voce conclui um capitulo de qualquer obra. Marcar como lido na pagina do leitor (ou via 'ate aqui' na lista) conta uma unica vez por capitulo."
+                desc="So leitura real pelo reader. Voce precisa ficar ao menos 30 segundos no capitulo. Marcar 'lido em lote' na lista do manga NAO concede pontos — e ajuste de estado, nao recompensa."
               />
               <PointCard
                 icon={<Flame className="w-4 h-4" />}
-                value="5"
+                value="3"
                 unit="× CAPS"
                 title="OBRA COMPLETA"
-                desc="Bonus ao concluir TODOS os capitulos atuais de uma obra. Escala com tamanho — terminar uma obra de 200 capitulos rende +1000 pts. Pago uma vez por obra na season."
+                desc="Bonus ao concluir TODOS os capitulos atuais de uma obra. Escala com tamanho — terminar uma obra de 200 capitulos rende +600 pts. Pago uma vez por obra na season."
               />
               <PointCard
                 icon={<Clock className="w-4 h-4" />}
@@ -111,7 +111,8 @@ export default function RankingRules({ tiers }: { tiers: RankPayload[] }) {
               style={{ color: 'var(--fg-muted)' }}
             >
               // Pontos sao idempotentes — re-marcar um capitulo nao gera pontos
-              extras. Pontos so contam pra season ATIVA.
+              extras. Folhear catalogo, favoritar, criar listas: zero pontos.
+              Aqui se sobe lendo.
             </p>
           </Block>
 
@@ -182,8 +183,9 @@ export default function RankingRules({ tiers }: { tiers: RankPayload[] }) {
               className="mono text-[10px] mt-3 uppercase tracking-widest"
               style={{ color: 'var(--fg-muted)' }}
             >
-              // Saburo's Hand exige 75.000 pts — equivale a algo como 6 mil
-              capitulos lidos ou multiplas obras longas concluidas.
+              // Saburo's Hand exige 200.000 pts — sao dezenas de milhares de
+              capitulos lidos com tempo real de leitura. Quase ninguem deveria
+              chegar la. Director (75k) ja e dedicacao extrema.
             </p>
           </Block>
 

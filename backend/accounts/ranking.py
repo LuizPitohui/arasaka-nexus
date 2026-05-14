@@ -35,13 +35,17 @@ class Rank:
 
 
 RANKS: tuple[Rank, ...] = (
-    Rank(7, "saburos-hand", "Saburo's Hand", 75_000),
-    Rank(6, "director", "Director", 25_000),
-    Rank(5, "lieutenant", "Lieutenant", 10_000),
-    Rank(4, "solo", "Solo", 3_500),
-    Rank(3, "netrunner", "Netrunner", 1_000),
-    Rank(2, "fixer", "Fixer", 250),
-    Rank(1, "street-kid", "Street Kid", 50),
+    # Tabela endurecida (rebalance 2026-05): farmar lista pessoal e marcar
+    # "lidos em lote" nao concedem mais pontos. Pontuacao base reduzida a
+    # metade e exige >=30s no capitulo. Saburo's Hand virou efetivamente
+    # inalcancavel sem leitura prolongada (~20k+ caps legitimos/season).
+    Rank(7, "saburos-hand", "Saburo's Hand", 200_000),
+    Rank(6, "director", "Director", 75_000),
+    Rank(5, "lieutenant", "Lieutenant", 25_000),
+    Rank(4, "solo", "Solo", 10_000),
+    Rank(3, "netrunner", "Netrunner", 3_000),
+    Rank(2, "fixer", "Fixer", 700),
+    Rank(1, "street-kid", "Street Kid", 100),
     Rank(0, "sewer-rat", "Sewer Rat", 0),
 )
 
@@ -67,18 +71,31 @@ def rank_for_score(score: int) -> Rank:
 # ---------------------------------------------------------------------------
 # Capítulo lido: pontuação base, disparada quando ReadingProgress.completed
 # vira True pela primeira vez no chapter+season.
-POINTS_CHAPTER = 10
+POINTS_CHAPTER = 5
 
 # Bônus por terminar obra inteira: multiplica nº de chapters do manga.
 # Escala com tamanho — Solo Leveling (200+ caps) vale muito mais que um
 # one-shot. Dispara uma vez por (user, manga, season).
-POINTS_WORK_BONUS_PER_CHAPTER = 5
+POINTS_WORK_BONUS_PER_CHAPTER = 3
 
 # Tempo de leitura: 1 ponto por 5 minutos ativos por capítulo, cap em 30 min.
 # Aproximação via ``updated_at - created_at`` do ReadingProgress; cap evita
 # abas esquecidas inflarem pontos.
 READING_TIME_CAP_SECONDS = 30 * 60
 READING_TIME_SECONDS_PER_POINT = 5 * 60
+
+# ---------------------------------------------------------------------------
+# Anti-farm: gate de engajamento minimo
+# ---------------------------------------------------------------------------
+# Tempo minimo (segundos) entre abrir o capitulo (ReadingProgress.created_at)
+# e marcar como lido (updated_at) pra concessao de pontos. Abaixo disso o
+# capitulo fica registrado como lido (estado de UI/badge respeitado), mas
+# NAO gera ScoreEvent. Mata o exploit de "abrir cap → fechar → next cap"
+# rolando em segundos, e o pior caso de oneshots de 1 pagina.
+#
+# 30s e generoso pra capitulos curtos legitimos (light webtoons de 5-10
+# paineis). Capitulos longos naturalmente ultrapassam.
+MIN_READ_SECONDS_FOR_POINTS = 30
 
 
 def reading_time_points(start, end) -> int:
