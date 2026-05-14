@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -85,15 +85,51 @@ function timeAgoShort(iso: string): string {
 // Page
 // ---------------------------------------------------------------------------
 export default function ListDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+          <Loader fullscreen label="OPENING_INDEX" caption="// FETCHING_LIST" />
+        </div>
+      }
+    >
+      <ListDetailContent />
+    </Suspense>
+  );
+}
+
+function isListSort(v: string | null): v is Sort {
+  return SORT_OPTIONS.some((o) => o.value === v);
+}
+
+function ListDetailContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
   const listId = params?.id;
+
+  // URL state pra sort + filtro (back/forward restaura; link compartilhavel)
+  const urlSort = searchParams.get('sort');
+  const urlFilter = searchParams.get('q') ?? '';
+
+  const updateUrl = (mutator: (p: URLSearchParams) => void) => {
+    const params2 = new URLSearchParams(searchParams.toString());
+    mutator(params2);
+    const qs = params2.toString();
+    router.replace(
+      qs ? `/library/lists/${listId}?${qs}` : `/library/lists/${listId}`,
+      { scroll: false },
+    );
+  };
 
   const [list, setList] = useState<ReadingList | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sort, setSort] = useState<Sort>('added_desc');
-  const [filter, setFilter] = useState('');
+  const [sort, setSort] = useState<Sort>(() => {
+    if (urlSort && isListSort(urlSort)) return urlSort;
+    return 'added_desc';
+  });
+  const [filter, setFilter] = useState(urlFilter);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
@@ -105,6 +141,8 @@ export default function ListDetailPage() {
       router.replace(`/login?next=/library/lists/${listId}`);
       return;
     }
+    // Sort fallback ao localStorage so quando URL nao tem
+    if (urlSort) return;
     try {
       const stored = window.localStorage.getItem(SORT_STORAGE_KEY);
       if (stored && SORT_OPTIONS.some((o) => o.value === stored)) {
@@ -113,7 +151,20 @@ export default function ListDetailPage() {
     } catch {
       /* no-op */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, listId]);
+
+  // Sync filter -> URL com debounce
+  useEffect(() => {
+    const t = setTimeout(() => {
+      updateUrl((p) => {
+        if (filter.trim()) p.set('q', filter.trim());
+        else p.delete('q');
+      });
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
 
   const load = async () => {
     if (!listId) return;
@@ -150,6 +201,10 @@ export default function ListDetailPage() {
     } catch {
       /* ignore */
     }
+    updateUrl((p) => {
+      if (next === 'added_desc') p.delete('sort');
+      else p.set('sort', next);
+    });
   };
 
   const handleRemove = async (mangaId: number, title: string) => {

@@ -173,34 +173,66 @@ function LibraryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Aba na URL: ?tab=progress|favorites|lists. Permite browser back/forward
-  // restaurar a aba correta e share de link direto pra uma aba especifica.
+  // Estado URL-driven: aba, sort de favoritos, filtro de busca. Permite
+  // browser back/forward restaurar tudo + link compartilhavel pega o
+  // mesmo estado pra outro user.
   const tabParam = searchParams.get('tab');
   const tab: Tab = isTab(tabParam) ? tabParam : 'progress';
-  const setTab = (next: Tab) => {
+  const urlSort = searchParams.get('sort');
+  const urlFilter = searchParams.get('q') ?? '';
+
+  // Helper pra atualizar a URL preservando outros params.
+  // Usa `replace` (sem history entry) pra mudancas de UI (sort/filter/tab
+  // que sao continuas) — back nao precisa voltar key-by-key.
+  const updateUrl = (mutator: (p: URLSearchParams) => void) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (next === 'progress') params.delete('tab');
-    else params.set('tab', next);
+    mutator(params);
     const qs = params.toString();
-    // replace pra nao acumular entry de history a cada troca de aba.
     router.replace(qs ? `/library?${qs}` : '/library', { scroll: false });
+  };
+
+  const setTab = (next: Tab) => {
+    updateUrl((p) => {
+      if (next === 'progress') p.delete('tab');
+      else p.set('tab', next);
+    });
   };
 
   const [data, setData] = useState<LibraryOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [newListName, setNewListName] = useState('');
   const [creatingList, setCreatingList] = useState(false);
-  const [favSort, setFavSort] = useState<FavSort>('updated');
-  const [favFilter, setFavFilter] = useState('');
+  // Sort default vem da URL, fallback pra localStorage, fallback pra 'updated'.
+  // URL ganha sempre que presente — links compartilhados sobrescrevem prefs locais.
+  const [favSort, setFavSort] = useState<FavSort>(() => {
+    if (urlSort && isFavSort(urlSort)) return urlSort;
+    return 'updated';
+  });
+  const [favFilter, setFavFilter] = useState(urlFilter);
 
+  // Hydrate sort do localStorage se a URL nao especificou
   useEffect(() => {
+    if (urlSort) return;
     try {
       const stored = window.localStorage.getItem(FAV_SORT_STORAGE_KEY);
       if (stored && isFavSort(stored)) setFavSort(stored);
     } catch {
       /* no-op */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sync favFilter -> URL com debounce 300ms pra evitar push por keystroke
+  useEffect(() => {
+    const t = setTimeout(() => {
+      updateUrl((p) => {
+        if (favFilter.trim()) p.set('q', favFilter.trim());
+        else p.delete('q');
+      });
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [favFilter]);
 
   const reload = async (sortOverride?: FavSort) => {
     try {
@@ -237,6 +269,12 @@ function LibraryContent() {
     } catch {
       /* ignore */
     }
+    // Sort tb vai pra URL — link compartilhavel preserva preferencia.
+    // Default 'updated' fica fora da URL pra mantela limpa.
+    updateUrl((p) => {
+      if (next === 'updated') p.delete('sort');
+      else p.set('sort', next);
+    });
   };
 
   const handleUnfavorite = async (mangaId: number) => {
