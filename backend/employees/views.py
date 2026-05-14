@@ -66,6 +66,36 @@ def _filter_by_preferred_language(request, qs):
     return qs.filter(chapters__translated_language=lang).distinct()
 
 
+def _filter_min_chapters(request, qs, default: int = 1):
+    """Esconde mangas com poucos capitulos das listagens.
+
+    Por que existe: ~6.7% do catalogo tinha 0 capitulos (entries quebradas
+    onde o sync importou metadata mas falhou em puxar feed) e ~21.8% tinha
+    apenas 1 capitulo (mistura de oneshots legitimos + spinoffs/extras
+    abandonados sem follow-up). Mostrar tudo em popular/latest/browse
+    polui a UX.
+
+    Defaults:
+    - Sem ``?min_chapters=`` no request: filtra ``>= 1`` (so esconde
+      o lixo claro). Mantem oneshots legitimos visiveis porque sao
+      conteudo valido.
+    - ``?min_chapters=N``: o cliente pode subir o piso (UI futura
+      "esconder oneshots" passaria 2).
+    - ``?min_chapters=0``: explicitamente desliga o filtro.
+
+    Custo: ``annotate(Count('chapters'))`` por listagem. Em qsets ja
+    paginados isso e barato (Postgres usa o indice fk de Chapter).
+    """
+    raw = request.query_params.get("min_chapters")
+    try:
+        threshold = int(raw) if raw is not None else default
+    except (TypeError, ValueError):
+        threshold = default
+    if threshold <= 0:
+        return qs
+    return qs.annotate(_chap_count=Count("chapters")).filter(_chap_count__gte=threshold)
+
+
 def _dedupe_by_work(qs):
     """Filtra ``qs`` pra incluir apenas a melhor variante de cada Work.
 
@@ -235,6 +265,7 @@ class MangaViewSet(viewsets.ModelViewSet):
         qs = Manga.objects.filter(is_active=True).prefetch_related("categories")
         qs = _filter_adult_qs(self.request, qs)
         qs = _filter_by_preferred_language(self.request, qs)
+        qs = _filter_min_chapters(self.request, qs)
 
         params = self.request.query_params
 
@@ -286,6 +317,7 @@ class MangaViewSet(viewsets.ModelViewSet):
         )
         qs = _filter_adult_qs(request, qs)
         qs = _filter_by_preferred_language(request, qs)
+        qs = _filter_min_chapters(request, qs)
         qs = _dedupe_by_work(qs)
         page = self.paginate_queryset(qs)
         if page is not None:
@@ -317,6 +349,7 @@ class MangaViewSet(viewsets.ModelViewSet):
         )
         qs = _filter_adult_qs(request, qs)
         qs = _filter_by_preferred_language(request, qs)
+        qs = _filter_min_chapters(request, qs)
         qs = _dedupe_by_work(qs)
         page = self.paginate_queryset(qs)
         if page is not None:
@@ -862,6 +895,7 @@ def search_mangas(request):
         request, Manga.objects.filter(title__icontains=query, is_active=True)
     )
     base_qs = _filter_by_preferred_language(request, base_qs)
+    base_qs = _filter_min_chapters(request, base_qs)
     deduped_qs = _dedupe_by_work(base_qs).order_by("-id")[:LOCAL_LIMIT]
     local_qs = list(deduped_qs)
 
