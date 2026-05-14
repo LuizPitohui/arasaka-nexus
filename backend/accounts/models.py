@@ -328,8 +328,9 @@ class Follow(models.Model):
             models.UniqueConstraint(
                 fields=["follower", "followed"], name="unique_follow_pair"
             ),
+            # Django 6 renomeou ``check`` -> ``condition`` em CheckConstraint.
             models.CheckConstraint(
-                check=~models.Q(follower=models.F("followed")),
+                condition=~models.Q(follower=models.F("followed")),
                 name="no_self_follow",
             ),
         ]

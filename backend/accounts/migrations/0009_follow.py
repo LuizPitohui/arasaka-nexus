@@ -53,7 +53,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="follow",
             constraint=models.CheckConstraint(
-                check=~models.Q(follower=models.F("followed")),
+                condition=~models.Q(follower=models.F("followed")),
                 name="no_self_follow",
             ),
         ),
