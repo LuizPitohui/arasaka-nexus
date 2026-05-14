@@ -173,6 +173,9 @@ class ReadingListItemSerializer(serializers.ModelSerializer):
 class ReadingListSerializer(serializers.ModelSerializer):
     items = ReadingListItemSerializer(many=True, read_only=True)
     item_count = serializers.IntegerField(source="items.count", read_only=True)
+    owner = serializers.SerializerMethodField()
+    collaborators = serializers.SerializerMethodField()
+    my_role = serializers.SerializerMethodField()
 
     class Meta:
         model = ReadingList
@@ -185,8 +188,34 @@ class ReadingListSerializer(serializers.ModelSerializer):
             "updated_at",
             "items",
             "item_count",
+            "owner",
+            "collaborators",
+            "my_role",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def _user_brief(self, user) -> dict:
+        profile = getattr(user, "profile", None)
+        avatar = profile.avatar.url if profile and profile.avatar else None
+        return {"id": user.id, "username": user.username, "avatar": avatar}
+
+    def get_owner(self, obj: ReadingList) -> dict:
+        return self._user_brief(obj.user)
+
+    def get_collaborators(self, obj: ReadingList) -> list[dict]:
+        return [self._user_brief(u) for u in obj.collaborators.all()]
+
+    def get_my_role(self, obj: ReadingList) -> str:
+        """``owner``, ``collaborator`` ou ``viewer`` (publico). Front usa
+        pra esconder/mostrar acoes de edicao."""
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return "viewer"
+        if obj.user_id == request.user.id:
+            return "owner"
+        if obj.collaborators.filter(id=request.user.id).exists():
+            return "collaborator"
+        return "viewer"
 
 
 class SeasonSerializer(serializers.ModelSerializer):

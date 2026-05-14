@@ -267,20 +267,92 @@ class ReadingListViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # User ve listas que CRIOU + listas em que e COLABORADOR. Listas
+        # publicas alheias acessadas via /accounts/users/<u>/lists/ ou
+        # /lists/<id>/ direto (retrieve permite se publica — checado
+        # abaixo).
+        from django.db.models import Q
+
         return (
-            ReadingList.objects.filter(user=self.request.user)
-            .prefetch_related("items__manga__categories")
+            ReadingList.objects.filter(
+                Q(user=self.request.user)
+                | Q(collaborators=self.request.user)
+            )
+            .distinct()
+            .prefetch_related("items__manga__categories", "collaborators__profile")
+            .select_related("user__profile")
+        )
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["request"] = self.request
+        return ctx
+
+    def retrieve(self, request, *args, **kwargs):
+        """Permite acesso a lista PUBLICA mesmo sem ser owner/collab."""
+        from django.db.models import Q
+
+        pk = kwargs.get("pk")
+        # Tenta no get_queryset primeiro (owner/collab)
+        instance = (
+            ReadingList.objects.filter(
+                Q(pk=pk) & (Q(user=request.user) | Q(collaborators=request.user) | Q(is_public=True))
+            )
+            .prefetch_related("items__manga__categories", "collaborators__profile")
+            .select_related("user__profile")
+            .first()
+        )
+        if not instance:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def _ensure_owner(self, reading_list, request):
+        """Helper: 403 se user nao e owner. Usado pra metadata + member mgmt."""
+        if reading_list.user_id != request.user.id:
+            return Response(
+                {"detail": "So o owner pode fazer essa acao."}, status=403
+            )
+        return None
+
+    def _ensure_owner_or_collab(self, reading_list, request):
+        """Helper: 403 se user nao e owner nem colab. Usado pra add/remove items."""
+        if reading_list.user_id == request.user.id:
+            return None
+        if reading_list.collaborators.filter(id=request.user.id).exists():
+            return None
+        return Response(
+            {"detail": "So owner ou colaborador pode editar itens."}, status=403
         )
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    def perform_update(self, serializer):
+        # PATCH/PUT — so owner edita metadata
+        if serializer.instance.user_id != self.request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied("So o owner pode editar a lista.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.user_id != self.request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied("So o owner pode excluir a lista.")
+        instance.delete()
+
     @action(detail=True, methods=["post"], url_path="add")
     def add_manga(self, request, pk=None):
-        """Adiciona mangá à lista. Idempotente em nivel de Work — se qualquer
-        variante do mesmo Work ja esta na lista, devolve o item existente.
+        """Adiciona mangá à lista. Owner OU colaboradores. Idempotente em
+        nivel de Work — se qualquer variante do mesmo Work ja esta na
+        lista, devolve o item existente.
         """
         reading_list = self.get_object()
+        denied = self._ensure_owner_or_collab(reading_list, request)
+        if denied:
+            return denied
         serializer = ReadingListItemSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         manga = serializer.validated_data["manga"]
@@ -315,8 +387,12 @@ class ReadingListViewSet(viewsets.ModelViewSet):
     )
     def remove_manga(self, request, pk=None, manga_id=None):
         """Remove qualquer variante do Work do ``manga_id`` da lista — UI
-        nao precisa lembrar qual variante o item esta armazenado."""
+        nao precisa lembrar qual variante o item esta armazenado. Owner
+        OU colaboradores."""
         reading_list = self.get_object()
+        denied = self._ensure_owner_or_collab(reading_list, request)
+        if denied:
+            return denied
         sibling_ids = _work_sibling_manga_ids(manga_id) or [manga_id]
         deleted, _ = ReadingListItem.objects.filter(
             reading_list=reading_list, manga_id__in=sibling_ids
@@ -348,6 +424,63 @@ class ReadingListViewSet(viewsets.ModelViewSet):
         if not item:
             return Response({"contains": False})
         return Response({"contains": True, "item_id": item.id, "manga_id": item.manga_id})
+
+    @action(detail=True, methods=["post"], url_path="collaborators")
+    def add_collaborator(self, request, pk=None):
+        """``POST /lists/<id>/collaborators/`` body ``{"username": "..."}``
+
+        So owner pode adicionar. Idempotente: re-adicao = no-op + 200.
+        Self-add proibido (voce ja e owner).
+        """
+        from django.contrib.auth import get_user_model
+
+        reading_list = self.get_object()
+        denied = self._ensure_owner(reading_list, request)
+        if denied:
+            return denied
+        username = (request.data or {}).get("username", "").strip()
+        if not username:
+            return Response({"detail": "username obrigatorio"}, status=400)
+        target = get_user_model().objects.filter(username__iexact=username).first()
+        if not target:
+            return Response({"detail": "User nao encontrado"}, status=404)
+        if target.id == request.user.id:
+            return Response(
+                {"detail": "Voce ja e owner — nao precisa adicionar."}, status=400
+            )
+        reading_list.collaborators.add(target)
+        return Response(
+            ReadingListSerializer(reading_list, context={"request": request}).data,
+            status=200,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="collaborators/(?P<username>[^/.]+)",
+    )
+    def remove_collaborator(self, request, pk=None, username=None):
+        """``DELETE /lists/<id>/collaborators/<username>/``
+
+        Owner pode remover qualquer um. Colaborador pode se remover (self-leave).
+        """
+        from django.contrib.auth import get_user_model
+
+        reading_list = self.get_object()
+        target = (
+            get_user_model().objects.filter(username__iexact=username).first()
+        )
+        if not target:
+            return Response({"detail": "User nao encontrado"}, status=404)
+        is_owner = reading_list.user_id == request.user.id
+        is_self = target.id == request.user.id
+        if not (is_owner or is_self):
+            return Response(
+                {"detail": "So owner OU o proprio colaborador pode remover."},
+                status=403,
+            )
+        reading_list.collaborators.remove(target)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------
@@ -867,14 +1000,28 @@ def library_overview(request):
         .order_by("-updated_at")[:10]
     )
 
-    lists = ReadingList.objects.filter(user=request.user).order_by("-updated_at")[:20]
+    # Inclui listas que o user CRIOU + listas em que e COLABORADOR.
+    # distinct() evita dupes quando user e ambos (impossivel hoje, mas safe).
+    from django.db.models import Q
+
+    lists = (
+        ReadingList.objects.filter(
+            Q(user=request.user) | Q(collaborators=request.user)
+        )
+        .distinct()
+        .select_related("user__profile")
+        .prefetch_related("collaborators__profile", "items__manga__categories")
+        .order_by("-updated_at")[:20]
+    )
 
     return Response(
         {
             "sort": sort,
             "favorites": MangaListSerializer(favorite_mangas, many=True).data,
             "in_progress": ReadingProgressSerializer(progress, many=True).data,
-            "lists": ReadingListSerializer(lists, many=True).data,
+            "lists": ReadingListSerializer(
+                lists, many=True, context={"request": request}
+            ).data,
         }
     )
 

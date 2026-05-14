@@ -11,9 +11,12 @@ import {
   Globe,
   Layers,
   Lock,
+  LogOut,
   Save,
   Search,
   Trash2,
+  UserPlus,
+  Users,
   X,
 } from 'lucide-react';
 
@@ -40,6 +43,8 @@ type ReadingListItem = {
   added_at: string;
 };
 
+type UserBrief = { id: number; username: string; avatar: string | null };
+
 type ReadingList = {
   id: number;
   name: string;
@@ -49,6 +54,9 @@ type ReadingList = {
   items: ReadingListItem[];
   created_at: string;
   updated_at: string;
+  owner: UserBrief;
+  collaborators: UserBrief[];
+  my_role: 'owner' | 'collaborator' | 'viewer';
 };
 
 type Sort = 'added_desc' | 'added_asc' | 'alpha' | 'alpha_desc';
@@ -135,6 +143,7 @@ function ListDetailContent() {
   const [editDesc, setEditDesc] = useState('');
   const [editPublic, setEditPublic] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showCollabModal, setShowCollabModal] = useState(false);
 
   useEffect(() => {
     if (!tokenStore.getAccess()) {
@@ -240,6 +249,30 @@ function ListDetailContent() {
       toast.error('Falha ao salvar.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleLeaveList = async () => {
+    if (!list) return;
+    // Pega o username do user logado via /auth/me/ — alternativa
+    // simples: enviar 'me' como atalho (precisa endpoint backend) OU
+    // confiar que /accounts/me/ devolve. Aqui usamos o api.get profile.
+    try {
+      const me = await api.get<{ username: string }>('/accounts/profile/');
+      if (
+        !confirm(
+          `Sair da lista "${list.name}"? Voce perde acesso de edicao mas pode ser readicionado pelo owner.`,
+        )
+      )
+        return;
+      await api.delete(
+        `/accounts/lists/${listId}/collaborators/${encodeURIComponent(me.username)}/`,
+      );
+      toast.success('Voce saiu da lista.');
+      router.push('/library');
+    } catch (err) {
+      console.error(err);
+      toast.error('Falha ao sair da lista.');
     }
   };
 
@@ -420,48 +453,179 @@ function ListDetailContent() {
                     {list.description}
                   </p>
                 )}
+                {/* Owner + colaboradores */}
+                <div className="mt-4 flex items-center gap-2 flex-wrap">
+                  <Link
+                    href={`/u/${encodeURIComponent(list.owner.username)}`}
+                    className="mono text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 px-2 py-1 transition-colors"
+                    style={{
+                      border: '1px solid var(--border-mid)',
+                      background: 'var(--bg-base)',
+                      color: 'var(--fg-secondary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+                      e.currentTarget.style.color = 'var(--arasaka-red)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border-mid)';
+                      e.currentTarget.style.color = 'var(--fg-secondary)';
+                    }}
+                    title="Owner"
+                  >
+                    {list.owner.avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={list.owner.avatar}
+                        alt=""
+                        style={{
+                          width: 16,
+                          height: 16,
+                          objectFit: 'cover',
+                          border: '1px solid var(--border-mid)',
+                        }}
+                      />
+                    ) : (
+                      <span style={{ color: 'var(--arasaka-red)' }}>◆</span>
+                    )}
+                    {list.owner.username}
+                    <span style={{ color: 'var(--fg-muted)' }}>· OWNER</span>
+                  </Link>
+                  {list.collaborators.map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/u/${encodeURIComponent(c.username)}`}
+                      className="mono text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 px-2 py-1 transition-colors"
+                      style={{
+                        border: '1px solid var(--border-faint)',
+                        background: 'var(--bg-base)',
+                        color: 'var(--fg-muted)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--neon-cyan)';
+                        e.currentTarget.style.color = 'var(--neon-cyan)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor =
+                          'var(--border-faint)';
+                        e.currentTarget.style.color = 'var(--fg-muted)';
+                      }}
+                      title={`Colaborador: ${c.username}`}
+                    >
+                      {c.avatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={c.avatar}
+                          alt=""
+                          style={{
+                            width: 16,
+                            height: 16,
+                            objectFit: 'cover',
+                            border: '1px solid var(--border-mid)',
+                          }}
+                        />
+                      ) : (
+                        <Users className="w-3 h-3" />
+                      )}
+                      {c.username}
+                    </Link>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  className="mono text-[10px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-1.5 transition-colors"
-                  style={{
-                    border: '1px solid var(--border-mid)',
-                    background: 'var(--bg-base)',
-                    color: 'var(--fg-secondary)',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-                    e.currentTarget.style.color = 'var(--arasaka-red)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border-mid)';
-                    e.currentTarget.style.color = 'var(--fg-secondary)';
-                  }}
-                >
-                  <Edit3 className="w-3 h-3" /> EDITAR
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteList}
-                  className="mono text-[10px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-1.5 transition-colors"
-                  style={{
-                    border: '1px solid var(--border-mid)',
-                    background: 'var(--bg-base)',
-                    color: 'var(--fg-secondary)',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-                    e.currentTarget.style.color = 'var(--arasaka-red)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border-mid)';
-                    e.currentTarget.style.color = 'var(--fg-secondary)';
-                  }}
-                >
-                  <Trash2 className="w-3 h-3" /> EXCLUIR
-                </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {list.my_role === 'owner' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowCollabModal(true)}
+                      className="mono text-[10px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-1.5 transition-colors"
+                      style={{
+                        border: '1px solid var(--arasaka-red)',
+                        background: 'rgba(220,38,38,0.08)',
+                        color: 'var(--arasaka-red)',
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background =
+                          'rgba(220,38,38,0.15)')
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background =
+                          'rgba(220,38,38,0.08)')
+                      }
+                    >
+                      <Users className="w-3 h-3" /> COMPARTILHAR
+                      {list.collaborators.length > 0 && (
+                        <span style={{ color: 'var(--fg-muted)' }}>
+                          [{list.collaborators.length}]
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      className="mono text-[10px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-1.5 transition-colors"
+                      style={{
+                        border: '1px solid var(--border-mid)',
+                        background: 'var(--bg-base)',
+                        color: 'var(--fg-secondary)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor =
+                          'var(--arasaka-red)';
+                        e.currentTarget.style.color = 'var(--arasaka-red)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border-mid)';
+                        e.currentTarget.style.color = 'var(--fg-secondary)';
+                      }}
+                    >
+                      <Edit3 className="w-3 h-3" /> EDITAR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteList}
+                      className="mono text-[10px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-1.5 transition-colors"
+                      style={{
+                        border: '1px solid var(--border-mid)',
+                        background: 'var(--bg-base)',
+                        color: 'var(--fg-secondary)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor =
+                          'var(--arasaka-red)';
+                        e.currentTarget.style.color = 'var(--arasaka-red)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border-mid)';
+                        e.currentTarget.style.color = 'var(--fg-secondary)';
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3" /> EXCLUIR
+                    </button>
+                  </>
+                )}
+                {list.my_role === 'collaborator' && (
+                  <button
+                    type="button"
+                    onClick={handleLeaveList}
+                    className="mono text-[10px] uppercase tracking-widest px-3 py-2 inline-flex items-center gap-1.5 transition-colors"
+                    style={{
+                      border: '1px solid var(--border-mid)',
+                      background: 'var(--bg-base)',
+                      color: 'var(--fg-secondary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+                      e.currentTarget.style.color = 'var(--arasaka-red)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border-mid)';
+                      e.currentTarget.style.color = 'var(--fg-secondary)';
+                    }}
+                  >
+                    <LogOut className="w-3 h-3" /> SAIR DA LISTA
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -680,7 +844,11 @@ function ListDetailContent() {
               <ItemCard
                 key={item.id}
                 item={item}
-                onRemove={handleRemove}
+                onRemove={
+                  list.my_role === 'owner' || list.my_role === 'collaborator'
+                    ? handleRemove
+                    : undefined
+                }
                 index={i}
               />
             ))}
@@ -696,7 +864,256 @@ function ListDetailContent() {
           </p>
         )}
       </div>
+
+      {showCollabModal && list.my_role === 'owner' && (
+        <CollaboratorsModal
+          list={list}
+          listId={String(listId)}
+          onClose={() => setShowCollabModal(false)}
+          onUpdated={(updated) => setList(updated)}
+        />
+      )}
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Modal: gerenciar colaboradores (apenas owner)
+// ---------------------------------------------------------------------------
+function CollaboratorsModal({
+  list,
+  listId,
+  onClose,
+  onUpdated,
+}: {
+  list: ReadingList;
+  listId: string;
+  onClose: () => void;
+  onUpdated: (next: ReadingList) => void;
+}) {
+  const [username, setUsername] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const u = username.trim();
+    if (!u) {
+      toast.error('Digite o username.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const next = await api.post<ReadingList>(
+        `/accounts/lists/${listId}/collaborators/`,
+        { username: u },
+      );
+      onUpdated(next);
+      setUsername('');
+      toast.success(`${u} adicionado.`);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError && err.data && typeof err.data === 'object'
+          ? String((err.data as { detail?: string }).detail || 'Falha.')
+          : 'Falha ao adicionar.';
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRemove = async (col: UserBrief) => {
+    if (!confirm(`Remover ${col.username} da lista?`)) return;
+    try {
+      await api.delete(
+        `/accounts/lists/${listId}/collaborators/${encodeURIComponent(col.username)}/`,
+      );
+      onUpdated({
+        ...list,
+        collaborators: list.collaborators.filter((c) => c.id !== col.id),
+      });
+      toast.success(`${col.username} removido.`);
+    } catch {
+      toast.error('Falha ao remover.');
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.78)' }}
+      onClick={onClose}
+    >
+      <div
+        className="corners-sm relative w-full max-w-md p-6"
+        style={{
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--arasaka-red)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background:
+              'linear-gradient(90deg, var(--arasaka-red) 0%, var(--arasaka-red) 40%, transparent 100%)',
+          }}
+        />
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p
+              className="mono text-[10px] uppercase tracking-[0.3em]"
+              style={{ color: 'var(--arasaka-red)' }}
+            >
+              // SHARE_INDEX
+            </p>
+            <h2
+              className="text-xl font-bold mt-1"
+              style={{ color: 'var(--fg-primary)' }}
+            >
+              Compartilhar lista
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 transition-colors"
+            style={{ color: 'var(--fg-muted)' }}
+            aria-label="Fechar"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <p
+          className="mono text-[10px] uppercase tracking-widest mb-4"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          // adicione um agent pelo username — ele vai poder adicionar/remover obras
+        </p>
+
+        <form onSubmit={handleAdd} className="flex gap-2 mb-5">
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="username"
+            className="flex-1 px-3 py-2 text-sm focus:outline-none"
+            style={{
+              background: 'var(--bg-base)',
+              border: '1px solid var(--border-mid)',
+              color: 'var(--fg-primary)',
+            }}
+            onFocus={(e) =>
+              (e.currentTarget.style.borderColor = 'var(--arasaka-red)')
+            }
+            onBlur={(e) =>
+              (e.currentTarget.style.borderColor = 'var(--border-mid)')
+            }
+            maxLength={150}
+            autoFocus
+          />
+          <button
+            type="submit"
+            disabled={busy}
+            className="mono px-3 py-2 text-[11px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            style={{
+              background: 'var(--arasaka-red)',
+              color: '#fff',
+              border: '1px solid var(--arasaka-red)',
+            }}
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            {busy ? '...' : 'ADD'}
+          </button>
+        </form>
+
+        <p
+          className="mono text-[10px] uppercase tracking-[0.25em] mb-3"
+          style={{ color: 'var(--fg-secondary)' }}
+        >
+          COLABORADORES [{list.collaborators.length}]
+        </p>
+        {list.collaborators.length === 0 ? (
+          <p
+            className="mono text-[10px] uppercase tracking-widest italic py-3 text-center"
+            style={{ color: 'var(--fg-muted)' }}
+          >
+            // SEM_COLABORADORES — esta lista e so sua
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {list.collaborators.map((c) => (
+              <div
+                key={c.id}
+                className="corners-sm flex items-center gap-3 p-2"
+                style={{
+                  background: 'var(--bg-base)',
+                  border: '1px solid var(--border-faint)',
+                }}
+              >
+                {c.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={c.avatar}
+                    alt=""
+                    style={{
+                      width: 28,
+                      height: 28,
+                      objectFit: 'cover',
+                      border: '1px solid var(--border-mid)',
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="flex items-center justify-center"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      border: '1px solid var(--border-mid)',
+                      color: 'var(--arasaka-red)',
+                      fontFamily: 'var(--font-display)',
+                      fontWeight: 700,
+                      fontSize: 12,
+                    }}
+                  >
+                    {c.username.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <span
+                  className="flex-1 text-sm font-bold truncate"
+                  style={{ color: 'var(--fg-primary)' }}
+                >
+                  {c.username}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(c)}
+                  className="p-1.5 transition-colors"
+                  style={{
+                    color: 'var(--fg-muted)',
+                    border: '1px solid transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'var(--arasaka-red)';
+                    e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'var(--fg-muted)';
+                    e.currentTarget.style.borderColor = 'transparent';
+                  }}
+                  title="Remover"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -706,7 +1123,8 @@ function ItemCard({
   index,
 }: {
   item: ReadingListItem;
-  onRemove: (mangaId: number, title: string) => void;
+  /** Quando undefined (viewer), botao remover nao renderiza. */
+  onRemove?: (mangaId: number, title: string) => void;
   index: number;
 }) {
   const manga = item.manga;
@@ -797,6 +1215,7 @@ function ItemCard({
         </h3>
       </Link>
 
+      {onRemove && (
       <button
         type="button"
         onClick={(e) => {
@@ -824,6 +1243,7 @@ function ItemCard({
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
+      )}
     </div>
   );
 }

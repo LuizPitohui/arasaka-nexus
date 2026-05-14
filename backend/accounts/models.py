@@ -110,6 +110,7 @@ class ReadingList(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="reading_lists",
+        help_text="Owner — quem criou. Tem permissao total (metadata, delete, gestao de membros).",
     )
     name = models.CharField(max_length=80)
     description = models.TextField(blank=True, default="")
@@ -121,6 +122,14 @@ class ReadingList(models.Model):
         through="ReadingListItem",
         related_name="in_reading_lists",
         blank=True,
+    )
+    # Colaboradores podem adicionar/remover itens (mesmo poder do owner
+    # exceto sobre metadata + gestao de pessoas + delete da lista).
+    collaborators = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="collab_lists",
+        blank=True,
+        help_text="Adicionados pelo owner via invite. Podem adicionar/remover obras.",
     )
 
     class Meta:

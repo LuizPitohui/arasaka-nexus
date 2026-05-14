@@ -50,6 +50,8 @@ type Progress = {
   updated_at: string;
 };
 
+type UserBrief = { id: number; username: string; avatar: string | null };
+
 type ReadingList = {
   id: number;
   name: string;
@@ -57,6 +59,9 @@ type ReadingList = {
   is_public: boolean;
   item_count: number;
   items: { id: number; manga: MangaSummary; position: number; added_at: string }[];
+  owner: UserBrief;
+  collaborators: UserBrief[];
+  my_role: 'owner' | 'collaborator' | 'viewer';
 };
 
 type LibraryOverview = {
@@ -1228,33 +1233,65 @@ function ListCard({
                   PUB
                 </span>
               )}
+              {list.my_role === 'collaborator' && (
+                <span
+                  className="px-1 py-0.5"
+                  style={{
+                    background: 'rgba(220,38,38,0.12)',
+                    border: '1px solid var(--arasaka-red)',
+                    color: 'var(--arasaka-red)',
+                    letterSpacing: '0.1em',
+                    fontSize: 9,
+                  }}
+                  title={`Owner: ${list.owner.username}`}
+                >
+                  ▸ COMPARTILHADA
+                </span>
+              )}
+              {list.my_role === 'owner' && list.collaborators.length > 0 && (
+                <span
+                  className="px-1 py-0.5"
+                  style={{
+                    background: 'rgba(220,38,38,0.12)',
+                    border: '1px solid var(--arasaka-red)',
+                    color: 'var(--arasaka-red)',
+                    letterSpacing: '0.1em',
+                    fontSize: 9,
+                  }}
+                  title={`Compartilhada com ${list.collaborators.length} pessoa(s)`}
+                >
+                  +{list.collaborators.length}
+                </span>
+              )}
             </p>
           </div>
-          {/* Botoes dentro do Link precisam preventDefault */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onDelete(list.id);
-            }}
-            className="p-1.5 transition-colors relative z-10"
-            style={{
-              color: 'var(--fg-muted)',
-              border: '1px solid transparent',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--arasaka-red)';
-              e.currentTarget.style.borderColor = 'var(--arasaka-red)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--fg-muted)';
-              e.currentTarget.style.borderColor = 'transparent';
-            }}
-            title="Excluir lista"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          {/* So owner pode excluir — colaborador "sai" via /library/lists/<id>. */}
+          {list.my_role === 'owner' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete(list.id);
+              }}
+              className="p-1.5 transition-colors relative z-10"
+              style={{
+                color: 'var(--fg-muted)',
+                border: '1px solid transparent',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--arasaka-red)';
+                e.currentTarget.style.borderColor = 'var(--arasaka-red)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--fg-muted)';
+                e.currentTarget.style.borderColor = 'transparent';
+              }}
+              title="Excluir lista"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </header>
         {list.description && (
           <p
