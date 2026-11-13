@@ -170,15 +170,16 @@ services:
     restart: unless-stopped
     profiles: ["mihon"]
     # JVM heap capada em 384m (default ~1GB era exagero pro DB de ~30MB).
-    # mem_limit=768m da folga pro heap 384m + metaspace + threads
-    # (~200 MB native overhead da JVM). 500m de uso real antes da diet,
-    # agora estabiliza em ~450-500 com 30% de headroom.
-    mem_limit: 768m
+    # A v2.4 ignora JAVA_OPTS (o startup chama `java -jar` direto), entao o
+    # cap vai por JAVA_TOOL_OPTIONS, que a JVM sempre le. A v2.4 tambem sobe
+    # um Chromium embutido (KCEF + Xvfb, ~450 MB) — com 768m o container
+    # chegou a 781/805 MB. 1280m = heap 384m + overhead JVM + KCEF + folga.
+    mem_limit: 1280m
     environment:
       TZ: America/Sao_Paulo
       BIND_IP: 0.0.0.0
       BIND_PORT: "4567"
-      JAVA_OPTS: "-Xmx384m -Xms128m -XX:MaxRAMPercentage=75"
+      JAVA_TOOL_OPTIONS: "-Xmx384m -Xms128m"
       # Sem auth no endpoint interno — só backend/worker conversam com ele
       # dentro da network nexus-net (não exposto publicamente).
       AUTH_MODE: none
