@@ -185,7 +185,8 @@ services:
     volumes:
       - suwayomi:/home/suwayomi/.local/share/Tachidesk
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:4567/api/v1/settings || exit 1"]
+      # Imagem v2.4 nao tem wget (so curl).
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:4567/api/v1/settings || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
