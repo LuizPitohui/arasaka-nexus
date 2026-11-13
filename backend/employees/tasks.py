@@ -522,9 +522,12 @@ def task_sync_followed_feeds():
 # ---------------------------------------------------------------------------
 COVER_DIR = "covers"
 COVER_USER_AGENT_HEADER = {"User-Agent": settings.MANGADEX_USER_AGENT}
+MIHON_COVER_PREFIX = "/api/cdn/mihon-cover/"
+_CONTENT_TYPE_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 
-def _download_image(url: str, dest: Path, timeout: int = 20) -> int:
+def _download_image(url: str, dest: Path, timeout: int = 20) -> tuple[int, str]:
+    """Baixa ``url`` em ``dest``. Retorna (bytes, content-type sem parametros)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     response = requests.get(url, headers=COVER_USER_AGENT_HEADER, timeout=timeout, stream=True)
     response.raise_for_status()
@@ -535,7 +538,28 @@ def _download_image(url: str, dest: Path, timeout: int = 20) -> int:
                 continue
             fh.write(chunk)
             size += len(chunk)
-    return size
+    content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+    return size, content_type
+
+
+def _cover_download_url(cover: str) -> str:
+    """URL absoluta de onde baixar a cover, ou "" se nao der pra resolver.
+
+    Covers Mihon sao gravadas como path relativo do nosso proxy
+    (/api/cdn/mihon-cover/<inner>:<mid>/, ver ``_normalize_mihon_cover``) —
+    requests nao baixa path relativo. Aqui vamos direto no thumbnail do
+    Suwayomi pela rede docker, igual ao ``proxy_mihon_cover``.
+    """
+    if cover.startswith(MIHON_COVER_PREFIX):
+        external_id = cover[len(MIHON_COVER_PREFIX):].strip("/")
+        _, _, mid = external_id.partition(":")
+        base = (settings.SUWAYOMI_URL or "").rstrip("/")
+        if not base or not mid.isdigit():
+            return ""
+        return f"{base}/api/v1/manga/{mid}/thumbnail"
+    if not cover.startswith(("http://", "https://")):
+        return ""
+    return cover
 
 
 @shared_task(name="employees.download_cover", bind=True, max_retries=2)
@@ -544,7 +568,11 @@ def task_download_cover(self, manga_id: int):
     if not manga or not manga.cover or manga.cover_path:
         return {"status": "skipped", "manga_id": manga_id}
 
-    url = manga.cover
+    url = _cover_download_url(manga.cover)
+    if not url:
+        # Sem retry: tentar de novo nao muda nada e so enche o log.
+        return {"status": "skipped", "manga_id": manga_id, "reason": "unresolvable cover"}
+
     ext = os.path.splitext(url.split("?", 1)[0])[1].lower() or ".jpg"
     if ext not in (".jpg", ".jpeg", ".png", ".webp"):
         ext = ".jpg"
@@ -552,10 +580,17 @@ def task_download_cover(self, manga_id: int):
     dest = Path(settings.MEDIA_ROOT) / rel_path
 
     try:
-        _download_image(url, dest)
+        _, content_type = _download_image(url, dest)
     except RequestException as exc:
         logger.warning("Falha download cover %s: %s", manga_id, exc)
         raise self.retry(exc=exc, countdown=60)
+
+    # Thumbnail do Suwayomi nao tem extensao na URL — usa o Content-Type pra
+    # nao servir webp/png como .jpg.
+    real_ext = _CONTENT_TYPE_EXT.get(content_type)
+    if real_ext and real_ext != ext and not (real_ext == ".jpg" and ext == ".jpeg"):
+        rel_path = f"{COVER_DIR}/{manga_id:06d}{real_ext}"
+        dest.replace(Path(settings.MEDIA_ROOT) / rel_path)
 
     Manga.objects.filter(id=manga_id).update(cover_path=rel_path)
     return {"status": "ok", "manga_id": manga_id, "path": rel_path}

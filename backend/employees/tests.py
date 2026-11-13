@@ -451,3 +451,46 @@ class ScannerTests(APITestCase):
         scanner.search_manga("CACHED")
 
         self.assertEqual(client.list_manga.call_count, 1)
+
+
+# ---------------------------------------------------------------------------
+# Cover mirror
+# ---------------------------------------------------------------------------
+@override_settings(CACHES=LOCMEM_CACHE, SUWAYOMI_URL="http://suwayomi:4567")
+class DownloadCoverTests(APITestCase):
+    def _fake_response(self, content_type="image/webp"):
+        resp = MagicMock()
+        resp.headers = {"Content-Type": content_type}
+        resp.iter_content.return_value = [b"img"]
+        return resp
+
+    def test_mihon_cover_resolves_to_suwayomi_thumbnail(self):
+        import tempfile
+
+        from .tasks import task_download_cover
+
+        manga = _seed_manga(
+            mangadex_id="mihon:9117178890425713139:1764",
+            cover="/api/cdn/mihon-cover/9117178890425713139:1764/",
+        )
+        with tempfile.TemporaryDirectory() as media, override_settings(MEDIA_ROOT=media), patch(
+            "employees.tasks.requests.get", return_value=self._fake_response()
+        ) as get:
+            result = task_download_cover.apply(args=[manga.id]).get()
+
+        self.assertEqual(get.call_args[0][0], "http://suwayomi:4567/api/v1/manga/1764/thumbnail")
+        self.assertEqual(result["status"], "ok")
+        manga.refresh_from_db()
+        self.assertEqual(manga.cover_path, f"covers/{manga.id:06d}.webp")
+
+    def test_unresolvable_relative_cover_is_skipped_without_request(self):
+        from .tasks import task_download_cover
+
+        manga = _seed_manga(cover="/api/cdn/preview/?u=x")
+        with patch("employees.tasks.requests.get") as get:
+            result = task_download_cover.apply(args=[manga.id]).get()
+
+        get.assert_not_called()
+        self.assertEqual(result["status"], "skipped")
+        manga.refresh_from_db()
+        self.assertIsNone(manga.cover_path)
