@@ -124,19 +124,25 @@ services:
   # e dar restart no `backend` + `celery` pra o BaseHTTPClient começar a
   # rotear as fontes opt-in (USE_FLARESOLVERR=True na subclasse).
   #
-  # Custo: ~2GB RAM em idle, +1.5-3s na primeira request por origem.
+  # O Suwayomi tambem usa (settings flareSolverrEnabled/flareSolverrUrl =
+  # http://flaresolverr:8191) pras extensoes Mihon atras de Cloudflare.
+  #
+  # Custo: ~550MB RAM em idle, +15s na primeira request por origem.
+  # v3.3.21 (Chrome 120) nao passava mais o challenge; v3.5.2 passa.
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:v3.3.21
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
     container_name: nexus-flaresolverr
     restart: unless-stopped
     profiles: ["antibot"]
+    mem_limit: 1g
     environment:
       LOG_LEVEL: info
       LOG_HTML: "false"
       CAPTCHA_SOLVER: none
       TZ: America/Sao_Paulo
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8191/"]
+      # Imagem nao tem wget/curl — usa o python dela.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8191/', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
