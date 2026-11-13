@@ -161,7 +161,11 @@ services:
   # Volume `suwayomi` persiste extensões instaladas + configurações.
   # Custo: ~1GB RAM, +500MB de imagem.
   suwayomi:
-    image: ghcr.io/suwayomi/suwayomi-server:stable
+    # Versao fixa: `stable` ficou parado na v2.1 (jul/2025) e o repo keiyoushi
+    # passou a exigir o Extension Store (index.pb), suportado desde a v2.3.
+    # Store cadastrado via GraphQL addExtensionStore (fica no volume):
+    #   https://github.com/keiyoushi/extensions/raw/repo/index.pb
+    image: ghcr.io/suwayomi/suwayomi-server:v2.4.2366
     container_name: nexus-suwayomi
     restart: unless-stopped
     profiles: ["mihon"]
